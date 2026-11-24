@@ -1,5 +1,5 @@
 {
-  "_about": "Every tile and creature has a name. Two views draw them. ASCII view: `glyph` in `fg` on `bg`; optional `sprite` ([col,row] on `sprites.sheet`, or an image path). Isometric view: the `iso` block (shape, h, f, color, light, painted) draws a lit placeholder; set `iso.sprite` to an image of any size and it replaces the placeholder, anchored at `iso.anchor` (default: bottom centre) on the tile, scaled by `iso.scale`. See web/js/iso.js for details. Talk-box portraits: `creatures.<name>.portrait.image` (any size, fitted to the frame) and `frame` colour; a placeholder bust is drawn until an image is set. Animations: `iso.states` and `portrait.states` take a slot per state (`thinking` while Tally works on a reply, `speaking` while the words arrive), each with `frames` (a list of images) or `sheet` + `frame` [w, h] + `count`, and `fps`; see web/js/anim.js. Empty slots fall back to the placeholder animation.",
+  "_about": "Every tile and creature has a name. Two views draw them. ASCII view: `glyph` in `fg` on `bg`; optional `sprite` ([col,row] on `sprites.sheet`, or an image path). Isometric view: the `iso` block (shape, h, f, color, light, painted) draws a lit placeholder; set `iso.sprite` to an image of any size and it replaces the placeholder, anchored at `iso.anchor` (default: bottom centre) on the tile, scaled by `iso.scale`. See web/js/iso.js for details. Talk-box portraits: `creatures.<name>.portrait.image` (any size, fitted to the frame), optional `video` (muted, looping, plays while Tally thinks or speaks), `pixelated` for pixel art, and `frame` colour; a placeholder bust is drawn until an image is set. Animations: `iso.states` and `portrait.states` take a slot per state (`thinking` while Tally works on a reply, `speaking` while the words arrive), each with `frames` (a list of images) or `sheet` + `frame` [w, h] + `count`, and `fps`; see web/js/anim.js. Empty slots fall back to the placeholder animation.",
   "sprites": {
     "sheet": null,
     "cell": 16
@@ -284,7 +284,8 @@
         }
       },
       "portrait": {
-        "image": "sprites/tally_portrait.png",
+        "image": "portraits/tally.jpg",
+        "video": null,
         "frame": "#5fe0d0",
         "states": {
           "thinking": { "frames": [], "fps": 8 },

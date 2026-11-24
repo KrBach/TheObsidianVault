@@ -4,6 +4,8 @@
 //   "portrait": { "image": "portraits/tally.png", "frame": "#5fe0d0" }
 // When `image` is set and loads, it is shown (any size; it is scaled to fit the frame, keeping
 // its proportions). Until then a painted placeholder bust is drawn on a canvas.
+// `portrait.video` (mp4 or webm) plays muted and looping while Tally thinks or speaks
+// (`video_states` changes when). `portrait.pixelated: true` keeps pixel art crisp.
 // `portrait.states` can add animations for states such as "thinking" (see anim.js); while one
 // is playing it is drawn on the canvas in place of the still image.
 
@@ -43,6 +45,24 @@ export class Portrait {
       };
       img.src = this.cfg.image;
     }
+    if (this.cfg.pixelated) el.classList.add("pixelated");
+
+    // Optional looping video (muted), played while Tally thinks or speaks; the still shows otherwise.
+    const videoStates = this.cfg.video_states || ["thinking", "speaking"];
+    if (this.cfg.video) {
+      const v = document.createElement("video");
+      Object.assign(v, { muted: true, loop: true, playsInline: true, preload: "auto", hidden: true });
+      v.setAttribute("muted", "");
+      v.oncanplay = () => { this.video = v; };
+      v.onerror = () => console.warn(`portrait video not found: ${this.cfg.video}`);
+      v.src = this.cfg.video;
+      el.querySelector(".art").append(v);
+      this.videoStates = videoStates;
+    }
+  }
+
+  videoWanted() {
+    return !!this.video && this.videoStates.includes(this.state);
   }
 
   setSpeaking(on) {
@@ -60,6 +80,17 @@ export class Portrait {
 
   draw(t) {
     const c = this.ctx;
+    if (this.video) {
+      const on = this.videoWanted();
+      if (on && this.video.paused) this.video.play().catch(() => {});
+      if (!on && !this.video.paused) this.video.pause();
+      this.video.hidden = !on;
+      if (on) {
+        this.canvas.hidden = true;
+        if (this.img) this.img.hidden = true;
+        return;
+      }
+    }
     const fr = frameOf(this.cfg.states?.[this.state], t - this.stateSince);
     if (this.img) {
       this.img.hidden = !!fr;
