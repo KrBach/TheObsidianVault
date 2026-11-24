@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import shutil
-from . import minitoml
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from . import minitoml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -19,8 +20,35 @@ class Config:
     brain: str = "auto"
     model: str = ""
     tools: list[str] = field(default_factory=lambda: ["Read", "Glob", "Grep"])
+    claude_path: str = ""
     host: str = "127.0.0.1"
     port: int = 8765
+
+
+# Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
+CLAUDE_CANDIDATES = [
+    "~/.claude/local/claude",
+    "~/.local/bin/claude",
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude",
+    "~/.npm-global/bin/claude",
+    "~/.bun/bin/claude",
+]
+
+
+def find_claude(explicit: str = "") -> str:
+    """Path to the Claude Code CLI, or "" if it cannot be found."""
+    if explicit:
+        p = Path(os.path.expanduser(explicit))
+        return str(p) if p.is_file() else ""
+    found = shutil.which("claude")
+    if found:
+        return found
+    for c in CLAUDE_CANDIDATES:
+        p = Path(os.path.expanduser(c))
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+    return ""
 
 
 def _expand(p: str) -> Path:
@@ -47,9 +75,12 @@ def load_config(path: Path | None = None) -> Config:
         brain=os.environ.get("TALLY_BRAIN") or brain.get("kind", "auto"),
         model=os.environ.get("TALLY_MODEL") or brain.get("model", ""),
         tools=brain.get("tools", ["Read", "Glob", "Grep"]),
+        claude_path=os.environ.get("CLAUDE_PATH") or brain.get("claude_path", ""),
         host=server.get("host", "127.0.0.1"),
         port=int(os.environ.get("VAULT_PORT") or server.get("port", 8765)),
     )
-    if cfg.brain == "auto":
-        cfg.brain = "claude-code" if shutil.which("claude") else "api"
+    # Claude Code (your normal login) is the default. The API is only used when asked for.
+    if cfg.brain in ("auto", ""):
+        cfg.brain = "claude-code"
+    cfg.claude_path = find_claude(cfg.claude_path)
     return cfg

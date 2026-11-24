@@ -93,6 +93,12 @@ def main() -> None:
     p = game.persona
     print("The Obsidian Vault")
     print(f"  brain: {game.brain.name}")
+    if game.brain.name == "claude-code":
+        if cfg.claude_path:
+            print(f"  claude: {cfg.claude_path}")
+        else:
+            from .brains import CLAUDE_MISSING
+            print(f"  WARNING: {CLAUDE_MISSING}")
     if p.ok:
         print(f"  Tally's core: {', '.join(p.loaded)} from {cfg.core_dir}")
     else:

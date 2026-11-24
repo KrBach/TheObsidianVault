@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import threading
 from typing import Iterator
@@ -24,6 +23,13 @@ TOOL_FLAVOUR = {
     "Glob": "Tally runs a finger along the shelf labels",
     "Grep": "Tally leafs through the ledger, looking for something",
 }
+
+
+CLAUDE_MISSING = (
+    "Could not find the Claude Code command (`claude`). In a terminal, run `which claude` "
+    "and put that path in config.toml under [brain] as claude_path = \"/path/to/claude\". "
+    "If `which claude` prints nothing, install Claude Code first."
+)
 
 
 class Brain:
@@ -46,7 +52,7 @@ class ClaudeCodeBrain(Brain):
         self.persona = persona
         self.session_id: str | None = None
         self.lock = threading.Lock()
-        self.exe = shutil.which("claude")
+        self.exe = cfg.claude_path
 
     def reset(self) -> None:
         self.session_id = None
@@ -70,7 +76,7 @@ class ClaudeCodeBrain(Brain):
 
     def talk(self, text: str) -> Iterator[dict]:
         if not self.exe:
-            yield {"type": "error", "text": "The `claude` command was not found. Install Claude Code or set brain.kind = \"api\"."}
+            yield {"type": "error", "text": CLAUDE_MISSING}
             return
         cwd = self.cfg.core_dir if self.cfg.core_dir and self.cfg.core_dir.is_dir() else None
         with self.lock:
@@ -123,7 +129,14 @@ class ApiBrain(Brain):
     DEFAULT_MODEL = "claude-opus-5-5"
 
     def __init__(self, cfg: Config, persona: Persona):
-        import anthropic  # imported here so claude-code mode needs no packages
+        try:
+            import anthropic  # imported here so claude-code mode needs no packages
+        except ModuleNotFoundError:
+            raise SystemExit(
+                'brain.kind is "api", which needs the anthropic package: '
+                "python3 -m pip install -r requirements.txt\n"
+                'To use your Claude Code login instead, set kind = "claude-code" in config.toml.'
+            )
 
         self.anthropic = anthropic
         self.client = anthropic.Anthropic()

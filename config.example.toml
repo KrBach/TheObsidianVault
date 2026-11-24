@@ -13,10 +13,12 @@ core_files = ["bootstrap.md", "soul.md"]
 context_file = "context/the-vault-game.md"
 
 [brain]
-# "claude-code": runs `claude -p` (uses your Claude Code login).
-# "api":         calls the Claude API with ANTHROPIC_API_KEY (pip install -r requirements.txt).
-# "auto":        claude-code if the `claude` command is found, else api.
-kind = "auto"
+# "claude-code" (default): runs `claude -p` with your Claude Code login. No API key, no packages.
+# "api": calls the Claude API with ANTHROPIC_API_KEY (needs: python3 -m pip install -r requirements.txt).
+kind = "claude-code"
+
+# Only needed if the game says it cannot find Claude Code: paste the output of `which claude`.
+claude_path = ""
 
 # Leave empty to use your Claude Code default model.
 model = ""
