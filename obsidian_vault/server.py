@@ -45,6 +45,12 @@ def make_handler(game: Game):
         def log_message(self, fmt, *args):  # keep the terminal quiet
             pass
 
+        def end_headers(self):
+            # The game's files change when you pull; make the browser check for a newer copy
+            # every time instead of mixing cached old scripts with new ones.
+            self.send_header("Cache-Control", "no-cache")
+            super().end_headers()
+
         def _json(self, data, status=HTTPStatus.OK):
             body = json.dumps(data).encode()
             self.send_response(status)

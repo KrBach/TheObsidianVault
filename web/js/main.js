@@ -444,11 +444,22 @@ async function boot() {
       e.ry += (e.y - e.ry) * 0.35;
       e.moving = Math.abs(e.x - e.rx) + Math.abs(e.y - e.ry) > 0.05;
     }
-    renderers[state.view].draw(w, [state.tally, state.player], t, state.player);
-    if (state.talking) { portraits.tally.draw(t); portraits.player.draw(t); }
-    requestAnimationFrame(frame);
+    requestAnimationFrame(frame); // first, so one bad frame cannot stop the loop
+    try {
+      renderers[state.view].draw(w, [state.tally, state.player], t, state.player);
+      if (state.talking) { portraits.tally.draw(t); portraits.player.draw(t); }
+    } catch (e) {
+      if (!state.drawError) {
+        state.drawError = true;
+        console.error(e);
+        log(`Drawing failed: ${e.message}. Press v for the ASCII view, and send this line over.`, "err");
+      }
+    }
   };
   requestAnimationFrame(frame);
 }
 
-boot().catch((e) => log(`The vault would not open: ${e.message}`, "err"));
+boot().catch((e) => {
+  log(`The vault would not open: ${e.message}`, "err");
+  window.vaultFatal?.(e.message);
+});
