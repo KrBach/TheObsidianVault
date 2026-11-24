@@ -4,6 +4,10 @@
 //   "portrait": { "image": "portraits/tally.png", "frame": "#5fe0d0" }
 // When `image` is set and loads, it is shown (any size; it is scaled to fit the frame, keeping
 // its proportions). Until then a painted placeholder bust is drawn on a canvas.
+// `portrait.states` can add animations for states such as "thinking" (see anim.js); while one
+// is playing it is drawn on the canvas in place of the still image.
+
+import { frameOf, preload } from "./anim.js";
 
 const W = 120, H = 150;
 
@@ -13,6 +17,9 @@ export class Portrait {
     this.def = def;
     this.cfg = def.portrait || {};
     this.speaking = false;
+    this.state = "idle";
+    this.stateSince = 0;
+    preload(this.cfg.states);
     el.style.setProperty("--frame", this.cfg.frame || def.fg || "#888");
 
     this.canvas = document.createElement("canvas");
@@ -28,7 +35,7 @@ export class Portrait {
       const img = new Image();
       img.alt = def.name;
       img.onload = () => {
-        this.canvas.remove();
+        this.canvas.hidden = true;
         el.querySelector(".art").append(img);
         this.img = img;
       };
@@ -41,9 +48,32 @@ export class Portrait {
     this.el.classList.toggle("speaking", on);
   }
 
+  // "idle", "thinking" or "speaking"
+  setState(state, t = performance.now() / 1000) {
+    if (state === this.state) return;
+    this.state = state;
+    this.stateSince = t;
+    this.el.classList.toggle("thinking", state === "thinking");
+  }
+
   draw(t) {
-    if (this.img) return;
     const c = this.ctx;
+    const fr = frameOf(this.cfg.states?.[this.state], t - this.stateSince);
+    if (this.img) {
+      this.img.hidden = !!fr;
+      this.canvas.hidden = !fr;
+    }
+    if (fr) {
+      // fit the frame inside the portrait, keeping its proportions, like the still image
+      const k = Math.max(W / fr.sw, H / fr.sh);
+      const dw = fr.sw * k, dh = fr.sh * k;
+      c.fillStyle = "#0a0610";
+      c.fillRect(0, 0, W, H);
+      c.drawImage(fr.img, fr.sx, fr.sy, fr.sw, fr.sh, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      return;
+    }
+    if (this.img) return;
+    const thinking = this.state === "thinking";
     const hex = (this.def.iso && this.def.iso.color) || this.def.fg || "#888";
     const n = parseInt(hex.slice(1), 16);
     const col = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -91,13 +121,27 @@ export class Portrait {
       const glow = this.def.iso.glow || "#5fe0d0";
       c.fillStyle = glow;
       c.shadowColor = glow;
-      c.shadowBlur = 8 + talk * 6;
+      // thinking: the eyes drift to one side, as if reading, and pulse
+      const el = t - this.stateSince;
+      const look = thinking ? Math.sin(el * 1.3) * 3 : 0;
+      c.shadowBlur = 8 + talk * 6 + (thinking ? 4 + 4 * Math.sin(el * 4) : 0);
       for (const dx of [-7, 7]) {
         c.beginPath();
-        c.ellipse(hx + dx, hy, 2.6, 1.6 + (Math.sin(t * 0.7) > 0.97 ? -1.4 : 0), 0, 0, Math.PI * 2);
+        c.ellipse(hx + dx + look, hy - (thinking ? 1 : 0), 2.6, 1.6 + (Math.sin(t * 0.7) > 0.97 ? -1.4 : 0), 0, 0, Math.PI * 2);
         c.fill();
       }
       c.shadowBlur = 0;
+      if (thinking) {
+        // faint ink motes rising past the hood
+        for (let i = 0; i < 4; i++) {
+          const p = (el * 0.35 + i / 4) % 1;
+          c.globalAlpha = Math.sin(p * Math.PI) * 0.7 * Math.min(1, el * 2);
+          c.beginPath();
+          c.arc(hx + Math.sin((p + i) * 4) * 10 + (i - 1.5) * 9, hy + 30 - p * 80, 1.8 - p, 0, Math.PI * 2);
+          c.fill();
+        }
+        c.globalAlpha = 1;
+      }
     } else {
       // bare head: skin tone lit from the left, a shadowed right side, a mouth when speaking
       const skin = (this.def.iso && this.def.iso.skin) || "#d9b48a";

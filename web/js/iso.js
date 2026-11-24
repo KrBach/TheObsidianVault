@@ -10,7 +10,8 @@
 //           (default: bottom centre, i.e. the feet). Sprites can be any size.
 //   scale   optional sprite scale (default 1)
 //   painted true for things a painted backdrop already shows (floors, walls)
-// Creatures work the same way through `creatures.<name>.iso`.
+// Creatures work the same way through `creatures.<name>.iso`, and can add animations for
+// states such as "thinking" under `iso.states` (see anim.js).
 //
 // Painted backdrops: world.backdrops in world/vault.json is a list of
 //   { "image": "backdrops/hearth.png", "cells": [x, y, w, h], "at": [px, py] }
@@ -18,6 +19,8 @@
 // top-left corner at `at` (pixels, relative to the centre of tile 0,0 at zoom 1). Props and
 // creatures are still separate sprites on top, depth-sorted by their tile. The tile grid stays
 // underneath, invisible, for walking, clicking and the map check.
+
+import { frameOf, preload } from "./anim.js";
 
 export const TW = 64; // tile width on screen (diamond)
 export const TH = 32; // tile height on screen
@@ -80,6 +83,7 @@ export class IsoRenderer {
         this.images[src] = img;
       }
     }
+    for (const d of Object.values(this.creatures)) preload(d.iso?.states);
   }
 
   spriteFor(def) {
@@ -411,6 +415,15 @@ export class IsoRenderer {
     c.ellipse(sx, sy, 10, 5, 0, 0, Math.PI * 2);
     c.fill();
 
+    // an animation for the current state (e.g. "thinking") wins over the still sprite
+    const slot = e.state && iso.states?.[e.state];
+    const fr = frameOf(slot, t - (e.stateSince ?? t));
+    if (fr) {
+      const k = slot.scale ?? iso.scale ?? 1;
+      const [ax, ay] = slot.anchor || iso.anchor || [fr.sw / 2, fr.sh];
+      c.drawImage(fr.img, fr.sx, fr.sy, fr.sw, fr.sh, sx - ax * k, sy - ay * k, fr.sw * k, fr.sh * k);
+      return;
+    }
     const sprite = this.spriteFor(def);
     if (sprite) {
       this.drawSprite(sprite, iso, sx, sy, [sprite.naturalWidth / 2, sprite.naturalHeight], e.alpha ?? 1);
@@ -449,14 +462,39 @@ export class IsoRenderer {
       c.beginPath();
       c.arc(sx, top + 9, 3.2, 0, Math.PI * 2);
       c.fill();
+      if (iso.glow) {
+        // two points of light in the hood; brighter while Tally thinks or speaks
+        const eyes = e.state === "thinking" ? 0.55 + 0.45 * Math.sin(t * 5) : e.state === "speaking" ? 1 : 0.6;
+        c.fillStyle = iso.glow;
+        c.globalAlpha = (e.alpha ?? 1) * eyes;
+        for (const dx of [-1.3, 1.3]) c.fillRect(sx + dx - 0.6, top + 8.4, 1.2, 1);
+        c.globalAlpha = e.alpha ?? 1;
+      }
     } else {
       c.fillStyle = rgb(this.col(iso.skin || "#d9b48a"), light, 1);
       c.beginPath();
       c.arc(sx, top + 7, 5, 0, Math.PI * 2);
       c.fill();
     }
-    if (iso.glow) this.glow(sx, top + 10, 18, this.col(iso.glow), 0.25 * (e.alpha ?? 1));
+    if (iso.glow) {
+      const g = e.state === "thinking" ? 0.25 + 0.2 * Math.sin(t * 3) : e.state === "speaking" ? 0.4 : 0.25;
+      this.glow(sx, top + 10, 18, this.col(iso.glow), g * (e.alpha ?? 1));
+    }
+    if (e.state === "thinking") this.thinkingMotes(sx, top - 6, t - (e.stateSince ?? t), this.col(iso.glow || "#ffffff"));
     c.globalAlpha = 1;
+  }
+
+  // Placeholder "thinking" animation: three ink motes drifting up from the hood.
+  thinkingMotes(x, y, el, col) {
+    const c = this.ctx;
+    for (let i = 0; i < 3; i++) {
+      const p = (el * 0.8 + i / 3) % 1; // each mote's progress through its rise
+      const a = Math.sin(p * Math.PI) * Math.min(1, el * 2);
+      c.fillStyle = `rgba(${col.join(",")},${(0.85 * a).toFixed(3)})`;
+      c.beginPath();
+      c.arc(x + Math.sin((p + i) * 5) * 4 + (i - 1) * 3, y - p * 16, 1.6 - p * 0.6, 0, Math.PI * 2);
+      c.fill();
+    }
   }
 
   // ---------- frame ----------

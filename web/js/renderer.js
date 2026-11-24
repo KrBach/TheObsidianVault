@@ -114,7 +114,8 @@ export class GlyphRenderer {
     for (const e of entities) {
       const def = this.creatures[e.kind];
       const under = this.tiles[legend[map[e.y][e.x]]] || {};
-      this.drawCell(e.x, e.y, def, { bg: under.bg, alpha: e.alpha ?? 1 });
+      const alpha = e.state === "thinking" ? 0.55 + 0.45 * Math.sin(t * 6) : e.alpha ?? 1;
+      this.drawCell(e.x, e.y, def, { bg: under.bg, alpha });
     }
   }
 }

@@ -15,7 +15,7 @@ const bottom = document.getElementById("bottom");
 const state = {
   world: null,
   player: { kind: "player", x: 0, y: 0, rx: 0, ry: 0 },
-  tally: { kind: "tally", x: 0, y: 0, rx: 0, ry: 0, alpha: 1 },
+  tally: { kind: "tally", x: 0, y: 0, rx: 0, ry: 0, alpha: 1, state: "idle", stateSince: 0 },
   path: [], // queued steps from a click
   onArrive: null, // what to do when the path ends
   view: "iso",
@@ -263,18 +263,30 @@ function stopTalking() {
   log("You step back from the desk.", "action");
 }
 
+// Tally's animation state: "idle", "thinking" (working on a reply, or reading notes) or "speaking".
+function setTallyState(st) {
+  const t = performance.now() / 1000;
+  if (state.tally.state !== st) {
+    state.tally.state = st;
+    state.tally.stateSince = t;
+  }
+  portraits?.tally.setState(st, t);
+}
+
 async function say(text) {
   if (state.busy) return;
   state.busy = true;
   input.disabled = true;
   portraits?.player.setSpeaking(false);
   portraits?.tally.setSpeaking(true);
+  setTallyState("thinking");
   logLine("Kristian", "you").textContent = text;
   let body = logLine("Tally", "tally");
   body.classList.add("thinking");
   // Tool use shows as an action line. Keep the order true: action first if Tally has not
   // spoken yet, otherwise start a fresh Tally line after it.
   const onAction = (t) => {
+    setTallyState("thinking");
     const line = log(`${t}.`, "action");
     if (!body.textContent) {
       body.parentElement.before(line);
@@ -288,7 +300,7 @@ async function say(text) {
   const where = `Kristian is standing in ${room ? room.name : "the vault"}, next to your desk.`;
   try {
     await talk(text, where, {
-      delta: (t) => { body.textContent += t; logEl.scrollTop = logEl.scrollHeight; },
+      delta: (t) => { setTallyState("speaking"); body.textContent += t; logEl.scrollTop = logEl.scrollHeight; },
       action: onAction,
       error: (t) => log(t, "err"),
     });
@@ -297,6 +309,7 @@ async function say(text) {
   }
   body.classList.remove("thinking");
   if (!body.textContent) body.parentElement.remove();
+  setTallyState("idle");
   if (state.writes !== "off") {
     const before = state.waiting || 0;
     state.waiting = await ledger.refresh();
@@ -426,7 +439,6 @@ async function boot() {
 
   const frame = (ms) => {
     const t = ms / 1000;
-    state.tally.alpha = state.busy ? 0.55 + 0.45 * Math.sin(t * 6) : 1;
     for (const e of [state.player, state.tally]) {
       e.rx += (e.x - e.rx) * 0.35;
       e.ry += (e.y - e.ry) * 0.35;
