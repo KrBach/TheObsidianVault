@@ -1,4 +1,5 @@
-import { Renderer } from "./renderer.js";
+import { GlyphRenderer } from "./renderer.js";
+import { IsoRenderer } from "./iso.js";
 import { talk, resetConversation } from "./talk.js";
 
 const $ = (id) => document.getElementById(id);
@@ -8,8 +9,11 @@ const SHELF_COLOURS = ["#c98a5a", "#7fb07a", "#c0a050", "#6a9ad0", "#b07ac0", "#
 
 const state = {
   world: null,
-  player: { kind: "player", x: 0, y: 0 },
-  tally: { kind: "tally", x: 0, y: 0, alpha: 1 },
+  player: { kind: "player", x: 0, y: 0, rx: 0, ry: 0 },
+  tally: { kind: "tally", x: 0, y: 0, rx: 0, ry: 0, alpha: 1 },
+  path: [], // queued steps from a click
+  onArrive: null, // what to do when the path ends
+  view: "iso",
   talking: false,
   busy: false,
   shelfAt: new Map(), // "x,y" -> shelf info
@@ -121,6 +125,75 @@ function updateSide() {
   if (!near.size) nearby.innerHTML = '<span class="dim">nothing of note</span>';
 }
 
+// ---------- walking ----------
+
+const walkable = (x, y) => {
+  const t = tileAt(x, y);
+  return !!(t && t.def && !t.def.solid) && !(x === state.tally.x && y === state.tally.y);
+};
+
+const STEPS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Shortest path (straight steps) from the player to any of the goal cells.
+function findPath(goals) {
+  const key = (x, y) => `${x},${y}`;
+  const goalSet = new Set(goals.map(([x, y]) => key(x, y)));
+  const start = [state.player.x, state.player.y];
+  if (goalSet.has(key(...start))) return [];
+  const prev = new Map([[key(...start), null]]);
+  const queue = [start];
+  while (queue.length) {
+    const [x, y] = queue.shift();
+    for (const [dx, dy] of STEPS4) {
+      const nx = x + dx, ny = y + dy, k = key(nx, ny);
+      if (prev.has(k) || !walkable(nx, ny)) continue;
+      prev.set(k, [x, y]);
+      if (goalSet.has(k)) {
+        const path = [];
+        for (let c = [nx, ny]; prev.get(key(...c)); c = prev.get(key(...c))) path.unshift(c);
+        return path;
+      }
+      queue.push([nx, ny]);
+    }
+  }
+  return null;
+}
+
+const neighbours = (x, y) => STEPS4.map(([dx, dy]) => [x + dx, y + dy]).filter(([nx, ny]) => walkable(nx, ny));
+
+function walkTo(x, y) {
+  if (state.talking) stopTalking();
+  const isTally = x === state.tally.x && y === state.tally.y;
+  const t = tileAt(x, y);
+  if (!t || !t.def) return;
+  let goals, onArrive = null;
+  if (isTally) {
+    goals = neighbours(x, y);
+    onArrive = () => startTalking();
+  } else if (t.def.solid) {
+    goals = neighbours(x, y);
+    if (t.id !== "wall") onArrive = () => log(describe(x, y));
+  } else {
+    goals = [[x, y]];
+  }
+  const path = findPath(goals);
+  if (path === null) return log("You can't find a way there.");
+  state.path = path;
+  state.onArrive = onArrive;
+  if (!path.length && onArrive) { state.onArrive = null; onArrive(); }
+}
+
+function stepAlongPath() {
+  if (!state.path.length) return;
+  const [nx, ny] = state.path.shift();
+  move(nx - state.player.x, ny - state.player.y);
+  if (!state.path.length && state.onArrive) {
+    const f = state.onArrive;
+    state.onArrive = null;
+    f();
+  }
+}
+
 // ---------- actions ----------
 
 function move(dx, dy) {
@@ -218,8 +291,13 @@ window.addEventListener("keydown", (e) => {
     resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
     return;
   }
+  if (e.key === "v") return setView(state.view === "iso" ? "ascii" : "iso");
   const d = KEYS[e.key];
-  if (d) { e.preventDefault(); move(...d); }
+  if (d) {
+    e.preventDefault();
+    state.path = [];
+    move(...d);
+  }
 });
 
 form.addEventListener("submit", (e) => {
@@ -232,6 +310,8 @@ form.addEventListener("submit", (e) => {
 
 // ---------- boot ----------
 
+let setView = () => {};
+
 async function boot() {
   const res = await fetch("/api/world");
   state.world = await res.json();
@@ -240,10 +320,46 @@ async function boot() {
   [state.tally.x, state.tally.y] = w.tally;
   labelShelves();
 
-  const renderer = new Renderer($("map"), w);
-  const fit = () => renderer.resize(w.map[0].length, w.map.length, $("view").getBoundingClientRect());
+  state.player.rx = state.player.x; state.player.ry = state.player.y;
+  state.tally.rx = state.tally.x; state.tally.ry = state.tally.y;
+
+  const canvas = $("map");
+  const renderers = { iso: new IsoRenderer(canvas, w), ascii: new GlyphRenderer(canvas, w) };
+  const fit = () => renderers[state.view].resize($("view").getBoundingClientRect());
+  setView = (v) => {
+    state.view = v;
+    try { localStorage.setItem("vault-view", v); } catch (_) { /* private mode */ }
+    fit();
+    $("view-name").textContent = v === "iso" ? "isometric" : "ASCII";
+  };
+  let saved = null;
+  try { saved = localStorage.getItem("vault-view"); } catch (_) { /* private mode */ }
+  setView(saved === "ascii" ? "ascii" : "iso");
   window.addEventListener("resize", fit);
-  fit();
+
+  const cellAt = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    return renderers[state.view].pick(ev.clientX - r.left, ev.clientY - r.top);
+  };
+  canvas.addEventListener("mousemove", (ev) => {
+    const c = cellAt(ev);
+    renderers[state.view].hover = c;
+    const isTally = c && c.x === state.tally.x && c.y === state.tally.y;
+    $("hover").textContent = isTally ? "Tally" : (c && describe(c.x, c.y)) || "";
+  });
+  canvas.addEventListener("mouseleave", () => { renderers[state.view].hover = null; $("hover").textContent = ""; });
+  canvas.addEventListener("click", (ev) => {
+    const c = cellAt(ev);
+    if (c) walkTo(c.x, c.y);
+  });
+  canvas.addEventListener("wheel", (ev) => {
+    const r = renderers.iso;
+    if (state.view !== "iso") return;
+    ev.preventDefault();
+    r.zoom = Math.min(2, Math.max(0.5, r.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1)));
+  }, { passive: false });
+  setInterval(stepAlongPath, 120);
+  window.vault = { state, renderers }; // handy from the browser console
 
   const st = w.status;
   const statusEl = $("status");
@@ -261,7 +377,12 @@ async function boot() {
   const frame = (ms) => {
     const t = ms / 1000;
     state.tally.alpha = state.busy ? 0.55 + 0.45 * Math.sin(t * 6) : 1;
-    renderer.draw(w, [state.tally, state.player], t);
+    for (const e of [state.player, state.tally]) {
+      e.rx += (e.x - e.rx) * 0.35;
+      e.ry += (e.y - e.ry) * 0.35;
+      e.moving = Math.abs(e.x - e.rx) + Math.abs(e.y - e.ry) > 0.05;
+    }
+    renderers[state.view].draw(w, [state.tally, state.player], t, state.player);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

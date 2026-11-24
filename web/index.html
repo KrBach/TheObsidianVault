@@ -16,6 +16,7 @@
     <main>
       <section id="view">
         <canvas id="map"></canvas>
+        <div id="hover"></div>
       </section>
 
       <aside id="side">
@@ -30,8 +31,10 @@
         </div>
         <div class="panel keys">
           <div class="label">KEYS</div>
-          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> move</div>
-          <div><b>t</b> or bump Tally: talk</div>
+          <div><b>click</b> to walk, click Tally to talk</div>
+          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> step</div>
+          <div><b>t</b> talk when next to Tally</div>
+          <div><b>v</b> view: <span id="view-name"></span>, <b>wheel</b> zoom</div>
           <div><b>esc</b> stop talking</div>
           <div><b>n</b> new conversation</div>
         </div>

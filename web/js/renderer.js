@@ -1,11 +1,14 @@
-// Draws the world as a grid of named tiles.
+// The flat ASCII view: draws the world as a grid of named tiles (press v to switch views).
 //
 // Each cell is drawn by name ("wall", "shelf", "tally"...). If the tile has a sprite and the
 // sprite image has loaded, the sprite is drawn; otherwise the glyph is. So sprites can be
 // added one tile at a time by editing world/tiles.json, with no changes here.
 
-export class Renderer {
+export class GlyphRenderer {
   constructor(canvas, defs) {
+    this.cols = defs.map[0].length;
+    this.rows = defs.map.length;
+    this.hover = null;
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.tiles = defs.tiles;
@@ -29,7 +32,12 @@ export class Renderer {
     }
   }
 
-  resize(cols, rows, box) {
+  pick(mx, my) {
+    return { x: Math.floor(mx / this.cell), y: Math.floor(my / this.cell) };
+  }
+
+  resize(box) {
+    const cols = this.cols, rows = this.rows;
     const dpr = window.devicePixelRatio || 1;
     this.cell = Math.max(10, Math.floor(Math.min(box.width / cols, box.height / rows)));
     this.canvas.style.width = `${cols * this.cell}px`;
@@ -92,12 +100,16 @@ export class Renderer {
         if (!id) { this.drawCell(x, y, { bg: "#000" }); continue; }
         const def = this.tiles[id];
         const opts = { glyph: def.glyph === null ? ch : undefined };
-        if (def.anim === "flicker") opts.alpha = 0.75 + 0.25 * Renderer.wobble(x, y, t, 9);
-        if (def.anim === "pulse") opts.alpha = 0.7 + 0.3 * Renderer.wobble(x, y, t, 1.5);
-        if (def.anim === "ripple") opts.glyph = Renderer.wobble(x, y, t, 1.2) > 0.6 ? "∽" : "≈";
+        if (def.anim === "flicker") opts.alpha = 0.75 + 0.25 * GlyphRenderer.wobble(x, y, t, 9);
+        if (def.anim === "pulse") opts.alpha = 0.7 + 0.3 * GlyphRenderer.wobble(x, y, t, 1.5);
+        if (def.anim === "ripple") opts.glyph = GlyphRenderer.wobble(x, y, t, 1.2) > 0.6 ? "∽" : "≈";
         if (id === "shelf" && world.shelfColour) opts.fg = world.shelfColour(x, y);
         this.drawCell(x, y, def, opts);
       }
+    }
+    if (this.hover && map[this.hover.y]?.[this.hover.x]) {
+      this.ctx.strokeStyle = "rgba(255,224,102,0.6)";
+      this.ctx.strokeRect(this.hover.x * this.cell + 0.5, this.hover.y * this.cell + 0.5, this.cell - 1, this.cell - 1);
     }
     for (const e of entities) {
       const def = this.creatures[e.kind];
