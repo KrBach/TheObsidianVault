@@ -13,7 +13,7 @@ A small isometric game (with an ASCII view as a fallback) about an Obsidian vaul
 
 ## Tally is the same Tally everywhere
 
-Tally's identity is not defined in this repo. At startup the game reads the shared core (`bootstrap.md` and `soul.md`) from your own vault, then adds a thin context layer for this game ([context/the-vault-game.md](context/the-vault-game.md)): where Tally is, how long replies should be, and that this session is read-only. Nothing from the vault is copied into the repo, and the game never writes to the vault.
+Tally's identity is not defined in this repo. At startup the game reads the shared core (`bootstrap.md` and `soul.md`) from your own vault, then adds a thin context layer for this game ([context/the-vault-game.md](context/the-vault-game.md)): where Tally is and how long replies should be. Nothing from the vault is copied into the repo. The game writes to the vault only through the ledger (below), and only after you approve, unless you choose otherwise.
 
 ## Run it
 
@@ -30,10 +30,32 @@ It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so
 
 Set `brain.kind` in `config.toml`:
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally gets only read-only tools (`Read`, `Glob`, `Grep`) and runs in the vault folder, so Tally can look at notes when you ask but cannot change anything. If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
+
+## Writing to the vault
+
+With the Claude Code brain, Tally gets a few vault tools from a small built-in MCP server (`obsidian_vault/vault_mcp.py`, no packages needed). They follow the rules in your `bootstrap.md`:
+
+- **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (Europe/Copenhagen) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
+- **add_coaching_item**: one new line under "For the coaching thread" in `soul.md`.
+- **propose_edit**: replace one exact passage in a note in a theme folder.
+- **propose_note**: create a new note in a theme folder.
+- **vault_size**: how big `bootstrap.md` + `soul.md` are against the 35 KB guide.
+
+Set `writes.mode` in `config.toml`:
+
+| mode | what happens |
+| --- | --- |
+| `review` (default) | every change waits for you in the **ledger** panel; click one to see the diff, then approve or reject |
+| `direct` | log and coaching lines are written at once; note edits and new notes still wait for you |
+| `off` | nothing is written; Tally is told the session is read-only |
+
+Rules that always hold: only `.md` files inside the vault; never `bootstrap.md`, `archive/`, `templates/` or hidden folders such as `.obsidian/`; note changes only in the folders listed in `writes.folders`. An edit is applied only if the note has not changed since Tally proposed it. Every write keeps a backup of the old file in `.vault-state/backups/` and a line in `.vault-state/journal.jsonl`, so it can be undone by hand. `.vault-state/` is git-ignored. The API brain cannot write.
+
+Tests (against a made-up vault in a temp folder): `python3 -m unittest discover -s tests`.
 
 ## Controls
 
@@ -63,7 +85,7 @@ Underneath both is an invisible tile grid. It handles walking, clicking, depth o
 
 Put images under `web/` (for example `web/sprites/` and `web/backdrops/`); paths are relative to it.
 
-The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. GitHub runs the same check on every pull request.
+The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. Run it before you commit a map change.
 
 ## Layout
 

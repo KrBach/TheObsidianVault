@@ -9,6 +9,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from .brains import Brain, make_brain
 from .config import REPO_ROOT, Config, load_config
+from .ledger import Ledger, LedgerError
 from .persona import Persona, load_persona, vault_shelves
 
 WEB_DIR = REPO_ROOT / "web"
@@ -21,6 +22,7 @@ class Game:
         self.cfg = cfg
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
+        self.ledger = Ledger(cfg)
 
     def world(self) -> dict:
         world = json.loads(WORLD_FILE.read_text(encoding="utf-8"))
@@ -30,6 +32,7 @@ class Game:
             "brain": self.brain.name,
             "core_loaded": self.persona.loaded,
             "core_missing": self.persona.missing,
+            "writes": self.cfg.writes_mode,
         }
         return world
 
@@ -53,6 +56,9 @@ def make_handler(game: Game):
         def do_GET(self):
             if self.path == "/api/world":
                 return self._json(game.world())
+            if self.path == "/api/pending":
+                return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
+                                   "size": game.ledger.size_report(for_tally=False)})
             return super().do_GET()
 
         def do_POST(self):
@@ -62,6 +68,20 @@ def make_handler(game: Game):
             if self.path == "/api/reset":
                 game.brain.reset()
                 return self._json({"ok": True})
+
+            if self.path.startswith("/api/pending/"):
+                parts = self.path.split("/")  # ["", "api", "pending", id, action]
+                if len(parts) != 5 or parts[4] not in ("approve", "reject"):
+                    return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                try:
+                    if parts[4] == "approve":
+                        msg = game.ledger.approve(parts[3])
+                    else:
+                        game.ledger.reject(parts[3])
+                        msg = "Rejected. Nothing was written."
+                except LedgerError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.CONFLICT)
+                return self._json({"ok": True, "message": msg})
 
             if self.path != "/api/talk":
                 return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -104,6 +124,9 @@ def main() -> None:
     else:
         print(f"  WARNING: Tally's core is incomplete. Missing: {', '.join(p.missing)}")
         print("  Set tally.core_dir in config.toml (copy config.example.toml).")
+    modes = {"off": "off (read-only)", "review": "review (every change waits for you in the game)",
+             "direct": "direct (log and coaching lines at once; note changes wait for you)"}
+    print(f"  writing: {modes.get(cfg.writes_mode, cfg.writes_mode)}")
     url = f"http://{cfg.host}:{cfg.port}/"
     server = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(game))
     print(f"  open {url}  (Ctrl+C to leave)")

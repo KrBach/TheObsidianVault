@@ -23,8 +23,24 @@ claude_path = ""
 # Leave empty to use your Claude Code default model.
 model = ""
 
-# Tools Tally may use in claude-code mode. Read-only: she can look at notes, never edit them.
+# Tools Tally may use in claude-code mode. Read-only: Tally can look at notes but not edit them.
+# Writing goes only through the vault tools below, never through Edit or Write.
 tools = ["Read", "Glob", "Grep"]
+
+[writes]
+# How Tally may write to the vault (Claude Code brain only):
+#   "off"     nothing is written
+#   "review"  every change waits for your approval in the game (the ledger panel)
+#   "direct"  interaction-log and coaching lines are written at once;
+#             note edits and new notes still wait for approval
+mode = "review"
+
+# Theme folders where Tally may propose note edits and new notes.
+# bootstrap.md, archive/, templates/ and hidden folders are never written.
+folders = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
+
+# Pending changes, backups and the write journal (git-ignored).
+state_dir = ".vault-state"
 
 [server]
 host = "127.0.0.1"

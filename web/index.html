@@ -17,6 +17,16 @@
       <section id="view">
         <canvas id="map"></canvas>
         <div id="hover"></div>
+        <div id="review" hidden>
+          <div class="review-head"><span id="review-title"></span><button type="button" id="review-close" title="Close (Esc)">×</button></div>
+          <div id="review-why" class="dim"></div>
+          <pre id="review-diff"></pre>
+          <div class="review-foot">
+            <span id="review-msg" class="warn"></span>
+            <button type="button" id="review-reject">Reject</button>
+            <button type="button" id="review-approve" class="primary">Approve and write</button>
+          </div>
+        </div>
       </section>
 
       <aside id="side">
@@ -28,6 +38,11 @@
         <div class="panel">
           <div class="label">NEARBY</div>
           <div id="nearby"></div>
+        </div>
+        <div class="panel" id="ledger" hidden>
+          <div class="label">LEDGER <span id="ledger-count" class="count"></span></div>
+          <div id="ledger-list"></div>
+          <div id="ledger-size" class="dim small"></div>
         </div>
         <div class="panel keys">
           <div class="label">KEYS</div>

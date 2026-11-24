@@ -12,17 +12,50 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import threading
 from typing import Iterator
 
-from .config import Config
+from .config import REPO_ROOT, Config
 from .persona import Persona
 
 TOOL_FLAVOUR = {
     "Read": "Tally pulls a note from a shelf",
     "Glob": "Tally runs a finger along the shelf labels",
     "Grep": "Tally leafs through the ledger, looking for something",
+    "mcp__vault__append_interaction_log": "Tally writes a line in the ledger",
+    "mcp__vault__add_coaching_item": "Tally pins a note for the coaching thread",
+    "mcp__vault__propose_edit": "Tally drafts a correction and sets it on the desk for you",
+    "mcp__vault__propose_note": "Tally drafts a new note and sets it on the desk for you",
+    "mcp__vault__vault_size": "Tally weighs the ledger",
 }
+
+VAULT_TOOLS = [
+    "mcp__vault__append_interaction_log",
+    "mcp__vault__add_coaching_item",
+    "mcp__vault__propose_edit",
+    "mcp__vault__propose_note",
+    "mcp__vault__vault_size",
+]
+
+
+def write_mcp_config(cfg: Config) -> str:
+    """The MCP config that lets Claude Code start the vault tools. Returns its path."""
+    env = {
+        "PYTHONPATH": str(REPO_ROOT),
+        "VAULT_WRITES": cfg.writes_mode,
+        "VAULT_STATE_DIR": str(cfg.state_dir),
+    }
+    if cfg.config_path:
+        env["VAULT_CONFIG"] = str(cfg.config_path)
+    if cfg.core_dir:
+        env["TALLY_CORE_DIR"] = str(cfg.core_dir)
+    conf = {"mcpServers": {"vault": {"type": "stdio", "command": sys.executable,
+                                     "args": ["-m", "obsidian_vault.vault_mcp"], "env": env}}}
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    path = cfg.state_dir / "mcp.json"
+    path.write_text(json.dumps(conf, indent=2), encoding="utf-8")
+    return str(path)
 
 
 CLAUDE_MISSING = (
@@ -53,21 +86,28 @@ class ClaudeCodeBrain(Brain):
         self.session_id: str | None = None
         self.lock = threading.Lock()
         self.exe = cfg.claude_path
+        self.writes = cfg.writes_mode != "off"
+        self.mcp_config = write_mcp_config(cfg) if self.writes else ""
 
     def reset(self) -> None:
         self.session_id = None
 
     def _command(self) -> list[str]:
         tools = ",".join(self.cfg.tools)
+        allowed = ",".join(self.cfg.tools + (VAULT_TOOLS if self.writes else []))
         cmd = [
             self.exe or "claude", "-p",
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--system-prompt", self.persona.system_prompt,
+            # Built-in tools stay read-only; writing goes only through the vault tools.
             "--tools", tools,
-            "--allowedTools", tools,
+            "--allowedTools", allowed,
             # Anything not on the allow list is refused instead of prompting.
             "--permission-mode", "dontAsk",
         ]
+        if self.writes:
+            # Only our vault server: no MCP servers from the user's own Claude Code setup.
+            cmd += ["--mcp-config", self.mcp_config, "--strict-mcp-config"]
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if self.session_id:

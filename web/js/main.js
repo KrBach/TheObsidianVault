@@ -2,6 +2,7 @@ import { GlyphRenderer } from "./renderer.js";
 import { IsoRenderer } from "./iso.js";
 import { Portrait } from "./portrait.js";
 import { talk, resetConversation } from "./talk.js";
+import * as ledger from "./ledger.js";
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log"), form = $("talk"), input = $("say");
@@ -296,6 +297,11 @@ async function say(text) {
   }
   body.classList.remove("thinking");
   if (!body.textContent) body.parentElement.remove();
+  if (state.writes !== "off") {
+    const before = state.waiting || 0;
+    state.waiting = await ledger.refresh();
+    if (state.waiting > before) log(`Tally sets ${state.waiting - before === 1 ? "a page" : "some pages"} on the desk for you to look at (see the ledger).`, "action");
+  }
   state.busy = false;
   input.disabled = false;
   portraits?.tally.setSpeaking(false);
@@ -314,6 +320,10 @@ const KEYS = {
 };
 
 window.addEventListener("keydown", (e) => {
+  if (ledger.isOpen()) {
+    if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
+    return;
+  }
   if (state.talking) {
     if (e.key === "Escape") { e.preventDefault(); stopTalking(); }
     return; // typing goes to the input
@@ -405,6 +415,10 @@ async function boot() {
   } else {
     statusEl.textContent = `brain: ${st.brain} · core: ${st.core_loaded.join(", ")}`;
   }
+
+  state.writes = st.writes || "off";
+  ledger.initLedger(state.writes, log);
+  if (state.writes !== "off") statusEl.append(` · writing: ${state.writes}`);
 
   log("You push open the heavy glass door and step into the vault.");
   log("Somewhere north, a pen scratches in a ledger.", "action");
