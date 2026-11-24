@@ -1,0 +1,119 @@
+{
+ "name": "The Obsidian Vault",
+ "map": [
+  "###################################################",
+  "#,..,....,....,...#................#.....,.....,..#",
+  "#.SSSSS....SSSSS..#..*..........*..#..o---o.......#",
+  "#.................#................#..|....\\......#",
+  "#.SSSSS....SSSSS..#.......dd.......#..o.....o--o..#",
+  "#.................+.......dT.......+...\\...|...|..#",
+  "#.SSSSS....SSSSS..#................#....o--o...o..#",
+  "#,....,....,...,..#.~~~~......*....#..,......,....#",
+  "#########+#########.~~~~...........#######+########",
+  "#.................#####.......#####...............#",
+  "#.AAAAAAAAAAAAAA..+..*...........*.+...%.....%....#",
+  "#.................#...............#......%........#",
+  "#.AAAAAAAAAAAAAA..#...............#..%.......%..%.#",
+  "#,....,....,....,.#.......=.......#.,....,....,...#",
+  "##########################+########################"
+ ],
+ "legend": {
+  "#": "wall",
+  ".": "floor",
+  ",": "floor_glint",
+  "+": "door",
+  "S": "shelf",
+  "A": "archive_shelf",
+  "d": "desk",
+  "T": "floor",
+  "*": "brazier",
+  "~": "pool",
+  "o": "graph_node",
+  "-": "graph_edge",
+  "|": "graph_edge",
+  "\\": "graph_edge",
+  "/": "graph_edge",
+  "=": "mat",
+  "%": "papers"
+ },
+ "spawn": [
+  26,
+  13
+ ],
+ "exit": [
+  26,
+  14
+ ],
+ "tally": [
+  27,
+  5
+ ],
+ "rooms": [
+  {
+   "id": "library",
+   "name": "The Library",
+   "rect": [
+    0,
+    0,
+    18,
+    8
+   ],
+   "desc": "Shelves cut into the black glass. Each one is a theme folder of the vault."
+  },
+  {
+   "id": "hearth",
+   "name": "The Hearth",
+   "rect": [
+    18,
+    0,
+    17,
+    9
+   ],
+   "desc": "Tally's desk sits here with the ledger open. Two braziers, and a still pool that reflects nothing quite right."
+  },
+  {
+   "id": "graph",
+   "name": "The Graph Room",
+   "rect": [
+    35,
+    0,
+    16,
+    8
+   ],
+   "desc": "Notes hang in the dark as points of light, joined by thin lines where one links to another."
+  },
+  {
+   "id": "archive",
+   "name": "The Archive",
+   "rect": [
+    0,
+    8,
+    18,
+    7
+   ],
+   "desc": "Cold memory. Long low shelves of old log entries. Tally only comes here when something calls for it."
+  },
+  {
+   "id": "hall",
+   "name": "The Entrance Hall",
+   "rect": [
+    18,
+    9,
+    16,
+    6
+   ],
+   "desc": "The way in. The door behind you leads back out."
+  },
+  {
+   "id": "outbox",
+   "name": "The Outbox",
+   "rect": [
+    34,
+    8,
+    17,
+    7
+   ],
+   "desc": "Loose pages Tally has written for you: digests, reviews, simulations."
+  }
+ ]
+}

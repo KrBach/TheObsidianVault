@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Obsidian Vault</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="frame">
+    <header>
+      <span class="title">THE OBSIDIAN VAULT</span>
+      <span id="status" class="dim"></span>
+    </header>
+
+    <main>
+      <section id="view">
+        <canvas id="map"></canvas>
+      </section>
+
+      <aside id="side">
+        <div class="panel">
+          <div class="label">LOCATION</div>
+          <div id="room-name" class="room"></div>
+          <div id="room-desc" class="dim"></div>
+        </div>
+        <div class="panel">
+          <div class="label">NEARBY</div>
+          <div id="nearby"></div>
+        </div>
+        <div class="panel keys">
+          <div class="label">KEYS</div>
+          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> move</div>
+          <div><b>t</b> or bump Tally: talk</div>
+          <div><b>esc</b> stop talking</div>
+          <div><b>n</b> new conversation</div>
+        </div>
+      </aside>
+    </main>
+
+    <section id="bottom">
+      <div id="log"></div>
+      <form id="talk" hidden>
+        <span class="prompt">Kristian&gt;</span>
+        <input id="say" autocomplete="off" spellcheck="true" placeholder="Say something to Tally (Esc to step away)">
+      </form>
+    </section>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

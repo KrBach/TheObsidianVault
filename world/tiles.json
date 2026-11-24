@@ -1,0 +1,26 @@
+{
+  "_about": "Every tile and creature has a name. The glyph renderer draws `glyph` in `fg` on `bg`. To use sprites, set `sprites.sheet` to an image and give a tile `sprite: [col, row]` (a cell on the sheet) or `sprite: \"path/to/file.png\"`. Tiles without a sprite keep their glyph, so sprites can be added one at a time.",
+  "sprites": {
+    "sheet": null,
+    "cell": 16
+  },
+  "tiles": {
+    "wall":          { "glyph": "▓", "fg": "#3b2a55", "bg": "#120b1c", "solid": true,  "name": "obsidian wall", "desc": "Black volcanic glass, smooth and faintly warm." },
+    "floor":         { "glyph": "·", "fg": "#2c2340", "bg": "#0a0710", "solid": false, "name": "floor" },
+    "floor_glint":   { "glyph": "∙", "fg": "#6b4fa0", "bg": "#0a0710", "solid": false, "name": "floor", "desc": "A fleck of violet light in the glass floor." },
+    "door":          { "glyph": "▒", "fg": "#8a6a3a", "bg": "#0a0710", "solid": false, "name": "doorway" },
+    "shelf":         { "glyph": "≡", "fg": "#b08a5a", "bg": "#1a1220", "solid": true,  "name": "shelf" },
+    "archive_shelf": { "glyph": "≡", "fg": "#5a6a80", "bg": "#10141c", "solid": true,  "name": "archive shelf", "desc": "Old log entries, filed away. Cold memory, read on demand." },
+    "desk":          { "glyph": "π", "fg": "#c9a86a", "bg": "#1a1220", "solid": true,  "name": "Tally's desk", "desc": "The ledger lies open. Neat columns, dated entries, a note in the margin about where the map ends." },
+    "brazier":       { "glyph": "☼", "fg": "#ff9a3c", "bg": "#1a0f0a", "solid": true,  "name": "brazier", "anim": "flicker" },
+    "pool":          { "glyph": "≈", "fg": "#4a7ac0", "bg": "#060a18", "solid": true,  "name": "still pool", "desc": "Your reflection, in obsidian. It seems to be taking notes.", "anim": "ripple" },
+    "graph_node":    { "glyph": "●", "fg": "#a77dff", "bg": "#0a0710", "solid": true,  "name": "note", "desc": "A point of light. Somewhere, a note links here.", "anim": "pulse" },
+    "graph_edge":    { "glyph": null,  "fg": "#4b3a78", "bg": "#0a0710", "solid": false, "name": "link", "desc": "A thin line of light between two notes." },
+    "mat":           { "glyph": "═", "fg": "#8a3a4a", "bg": "#0a0710", "solid": false, "name": "welcome mat", "desc": "It says WELCOME in letters worn almost smooth." },
+    "papers":        { "glyph": "¶", "fg": "#d8d0c0", "bg": "#0a0710", "solid": false, "name": "loose pages", "desc": "Digests and reviews Tally has written for you." }
+  },
+  "creatures": {
+    "player": { "glyph": "@", "fg": "#ffe066", "name": "Kristian" },
+    "tally":  { "glyph": "τ", "fg": "#5fe0d0", "name": "Tally", "desc": "Tally, keeper of the ledger. A careful cartographer's apprentice." }
+  }
+}

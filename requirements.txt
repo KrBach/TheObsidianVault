@@ -1,0 +1,2 @@
+# Only needed for brain = "api". The Claude Code brain needs no Python packages.
+anthropic>=2.13
