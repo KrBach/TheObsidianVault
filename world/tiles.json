@@ -259,7 +259,7 @@
         }
       },
       "portrait": {
-        "image": null,
+        "image": "portraits/kristian.jpg",
         "frame": "#d9b060"
       }
     },
