@@ -26,7 +26,15 @@ const state = {
 // ---------- log ----------
 
 function log(text, cls = "sys") {
+  // Repeats (bumping the same candle five times) fold into one line with a count.
+  const last = logEl.lastElementChild;
+  if (last && last.className === cls && last.dataset.text === text) {
+    last.dataset.count = String(Number(last.dataset.count || 1) + 1);
+    last.textContent = `${text} (x${last.dataset.count})`;
+    return last;
+  }
   const div = document.createElement("div");
+  div.dataset.text = text;
   div.className = cls;
   div.textContent = text;
   logEl.appendChild(div);
@@ -102,8 +110,21 @@ function describe(x, y) {
   return t.def.desc ? `${t.def.name}. ${t.def.desc}` : t.def.name;
 }
 
-function isAdjacent(a, b) {
-  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) === 1;
+// Close enough to talk: next to Tally, or across the desk from her.
+const TALK_RANGE = 2;
+function inTalkRange(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= TALK_RANGE;
+}
+
+function talkSpots() {
+  const spots = [];
+  for (let dy = -TALK_RANGE; dy <= TALK_RANGE; dy++) {
+    for (let dx = -TALK_RANGE; dx <= TALK_RANGE; dx++) {
+      const x = state.tally.x + dx, y = state.tally.y + dy;
+      if (walkable(x, y)) spots.push([x, y]);
+    }
+  }
+  return spots;
 }
 
 function updateSide() {
@@ -113,10 +134,10 @@ function updateSide() {
   $("room-desc").textContent = room ? room.desc : "";
 
   const near = new Set();
+  if (inTalkRange(state.player, state.tally)) near.add("Tally is right here. Press t to talk.");
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dy) continue;
-      if (state.tally.x === x + dx && state.tally.y === y + dy) near.add("Tally is right here. Press t to talk.");
       const t = tileAt(x + dx, y + dy);
       if (t?.def && !["floor", "floor_glint", "wall"].includes(t.id)) {
         const d = t.id.includes("shelf") ? describe(x + dx, y + dy) : t.def.name;
@@ -167,12 +188,12 @@ const neighbours = (x, y) => STEPS4.map(([dx, dy]) => [x + dx, y + dy]).filter((
 
 function walkTo(x, y) {
   if (state.talking) stopTalking();
-  const isTally = x === state.tally.x && y === state.tally.y;
   const t = tileAt(x, y);
   if (!t || !t.def) return;
+  const isTally = (x === state.tally.x && y === state.tally.y) || t.id === "desk";
   let goals, onArrive = null;
   if (isTally) {
-    goals = neighbours(x, y);
+    goals = talkSpots();
     onArrive = () => startTalking();
   } else if (t.def.solid) {
     goals = neighbours(x, y);
@@ -220,7 +241,7 @@ function move(dx, dy) {
 }
 
 function startTalking() {
-  if (!isAdjacent(state.player, state.tally)) {
+  if (!inTalkRange(state.player, state.tally)) {
     log("Tally is at the desk in the Hearth. Walk up to the desk first.");
     return;
   }

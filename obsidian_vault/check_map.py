@@ -5,7 +5,8 @@ Run: python3 -m obsidian_vault.check_map
 - every walkable tile is reachable from the spawn point,
 - every door has walkable tiles on two opposite sides, and each side leads into a room
   rather than a pocket (the way out of the vault is exempt),
-- Tally can be reached (a walkable tile next to Tally is reachable).
+- Tally can be reached (a walkable tile within talking range is reachable),
+- lamps (tiles with "lamp": true) that block movement stand against a wall.
 
 Only straight moves count, so nothing depends on squeezing diagonally past a corner.
 Exits with status 1 and lists the problems if anything fails.
@@ -21,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 STEPS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 MIN_ROOM = 4  # a door must open onto more than a pocket
+TALK_RANGE = 2  # must match TALK_RANGE in web/js/main.js
 
 
 def check(world: dict, tiles: dict) -> list[str]:
@@ -87,8 +89,18 @@ def check(world: dict, tiles: dict) -> list[str]:
                         problems.append(f"door at ({x},{y}) opens onto a dead end at {side}")
 
     tx, ty = world["tally"]
-    if not any((tx + dx, ty + dy) in seen for dx, dy in STEPS):
+    talk_spots = [(tx + dx, ty + dy) for dx in range(-TALK_RANGE, TALK_RANGE + 1) for dy in range(-TALK_RANGE, TALK_RANGE + 1)]
+    if not any(s in seen for s in talk_spots):
         problems.append("nobody can walk up to Tally")
+
+    # Lamps and braziers that block movement must stand against a wall, out of the way.
+    for y, row in enumerate(grid):
+        for x, _ in enumerate(row):
+            t = tile(x, y)
+            d = tiles.get(t, {})
+            if d.get("solid") and d.get("lamp"):
+                if not any(tile(x + dx, y + dy) == "wall" for dx, dy in STEPS):
+                    problems.append(f"{t} at ({x},{y}) blocks the floor; put it against a wall or make it non-solid")
     return problems
 
 

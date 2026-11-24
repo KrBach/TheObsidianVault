@@ -119,7 +119,8 @@
           "strength": 1.25,
           "flicker": true
         }
-      }
+      },
+      "lamp": true
     },
     "pool": {
       "glyph": "≈",
@@ -144,9 +145,9 @@
       "glyph": "●",
       "fg": "#a77dff",
       "bg": "#0a0710",
-      "solid": true,
+      "solid": false,
       "name": "note",
-      "desc": "A point of light. Somewhere, a note links here.",
+      "desc": "A point of light hanging at head height. Somewhere, a note links here.",
       "anim": "pulse",
       "iso": {
         "shape": "orb",
@@ -202,9 +203,9 @@
       "glyph": "¡",
       "fg": "#ffcf70",
       "bg": "#0a0710",
-      "solid": true,
+      "solid": false,
       "name": "reading candle",
-      "desc": "A tall candle on an iron stand, for reading by.",
+      "desc": "A tall candle on an iron stand, for reading by. You can step around it.",
       "anim": "flicker",
       "iso": {
         "shape": "flame",
@@ -217,7 +218,8 @@
           "strength": 0.85,
           "flicker": true
         }
-      }
+      },
+      "lamp": true
     }
   },
   "creatures": {

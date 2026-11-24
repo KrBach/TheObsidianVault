@@ -63,7 +63,7 @@ Underneath both is an invisible tile grid. It handles walking, clicking, depth o
 
 Put images under `web/` (for example `web/sprites/` and `web/backdrops/`); paths are relative to it.
 
-The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps and that no door opens onto a dead end. GitHub runs the same check on every pull request.
+The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. GitHub runs the same check on every pull request.
 
 ## Layout
 
