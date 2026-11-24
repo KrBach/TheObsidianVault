@@ -12,6 +12,13 @@ core_files = ["bootstrap.md", "soul.md"]
 # Lives in the repo because it describes the game, not Tally.
 context_file = "context/the-vault-game.md"
 
+# Every few minutes while the game is open, Tally is asked whether to go somewhere or say
+# something. Each tick is one small call (no tools, no history, a short sketch of Tally):
+# about 4,000 tokens in and 50 out, under a tenth of a cent on Haiku. 0 turns it off.
+# Ticks pause while the tab is hidden and after 30 minutes without input from you.
+tick_minutes = 6
+tick_model = "haiku"
+
 [brain]
 # "claude-code" (default): runs `claude -p` with your Claude Code login. No API key, no packages.
 # "api": calls the Claude API with ANTHROPIC_API_KEY (needs: python3 -m pip install -r requirements.txt).

@@ -187,5 +187,97 @@
     60
    ]
   }
+ ],
+ "spots": [
+  {
+   "id": "desk",
+   "name": "at your desk, with the ledger",
+   "at": [
+    26,
+    3
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "pool",
+   "name": "by the still pool",
+   "at": [
+    22,
+    2
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "brazier",
+   "name": "by the west brazier, at the Hearth's entrance",
+   "at": [
+    20,
+    8
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "library",
+   "name": "among the theme shelves",
+   "at": [
+    9,
+    4
+   ],
+   "room": "library"
+  },
+  {
+   "id": "archive",
+   "name": "along the archive shelves",
+   "at": [
+    6,
+    11
+   ],
+   "room": "archive"
+  },
+  {
+   "id": "graph",
+   "name": "among the hanging notes of the graph",
+   "at": [
+    41,
+    4
+   ],
+   "room": "graph"
+  },
+  {
+   "id": "outbox",
+   "name": "sorting the loose pages in the Outbox",
+   "at": [
+    40,
+    11
+   ],
+   "room": "outbox"
+  },
+  {
+   "id": "scriptorium",
+   "name": "at a writing desk in the Scriptorium",
+   "at": [
+    56,
+    3
+   ],
+   "room": "scriptorium"
+  },
+  {
+   "id": "maproom",
+   "name": "at the great map table",
+   "at": [
+    58,
+    12
+   ],
+   "room": "maproom"
+  },
+  {
+   "id": "door",
+   "name": "by the way in, watching the door",
+   "at": [
+    26,
+    12
+   ],
+   "room": "hall"
+  }
  ]
 }

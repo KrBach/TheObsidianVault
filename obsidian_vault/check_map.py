@@ -6,7 +6,7 @@ Run: python3 -m obsidian_vault.check_map
 - every door has walkable tiles on two opposite sides, and each side leads into a room
   rather than a pocket (the way out of the vault is exempt),
 - Tally can be reached (a walkable tile within talking range is reachable), and every
-  post Tally walks between (tally_posts) is reachable,
+  post Tally walks between (tally_posts) and every named spot (spots) is reachable,
 - lamps (tiles with "lamp": true) that block movement stand against a wall.
 
 Only straight moves count, so nothing depends on squeezing diagonally past a corner.
@@ -99,6 +99,10 @@ def check(world: dict, tiles: dict) -> list[str]:
         px, py = post["at"]
         if tuple(post["at"]) != tuple(world["tally"]) and (px, py) not in seen:
             problems.append(f"Tally's post in {post.get('room', '?')} at ({px},{py}) cannot be reached")
+    for spot in world.get("spots", []):
+        sx, sy = spot["at"]
+        if tuple(spot["at"]) != tuple(world["tally"]) and (sx, sy) not in seen:
+            problems.append(f"spot '{spot.get('id', '?')}' at ({sx},{sy}) cannot be reached")
 
     # Lamps and braziers that block movement must stand against a wall, out of the way.
     for y, row in enumerate(grid):

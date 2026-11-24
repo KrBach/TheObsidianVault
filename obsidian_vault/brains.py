@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 from typing import Iterator
 
@@ -73,6 +74,10 @@ class Brain:
 
     def reset(self) -> None:
         pass
+
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        """One short, separate call with no tools and no memory (Tally's tick). Raises on failure."""
+        raise NotImplementedError
 
 
 class ClaudeCodeBrain(Brain):
@@ -161,6 +166,28 @@ class ClaudeCodeBrain(Brain):
                 yield {"type": "error", "text": err[-500:] or f"claude exited with code {proc.returncode}"}
         yield {"type": "done"}
 
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        if not self.exe:
+            raise RuntimeError(CLAUDE_MISSING)
+        base = [self.exe, "-p", "--output-format", "json", "--system-prompt", system,
+                "--tools", "", "--strict-mcp-config", "--permission-mode", "dontAsk"]
+        if model:
+            base += ["--model", model]
+        # Run outside the vault and the repo so no CLAUDE.md is loaded: the tick stays small.
+        cwd = tempfile.gettempdir()
+        for extra in (["--no-session-persistence"], []):  # older Claude Code lacks the flag
+            proc = subprocess.run(base + extra, input=prompt, capture_output=True, text=True,
+                                  encoding="utf-8", cwd=cwd, timeout=120)
+            if proc.returncode == 0 or "no-session-persistence" not in (proc.stderr or ""):
+                break
+        try:
+            out = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise RuntimeError((proc.stderr or proc.stdout or "no output").strip()[-300:])
+        if out.get("is_error"):
+            raise RuntimeError(str(out.get("result") or "Claude Code reported an error."))
+        return str(out.get("result") or "")
+
 
 class ApiBrain(Brain):
     """Calls the Claude API directly. Keeps the conversation in memory."""
@@ -223,6 +250,14 @@ class ApiBrain(Brain):
             else:
                 self.history.append({"role": "assistant", "content": final.content})
         yield {"type": "done"}
+
+    MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        msg = self.client.messages.create(
+            model=self.MODELS.get(model, model or self.model), max_tokens=200,
+            system=system, messages=[{"role": "user", "content": prompt}])
+        return "".join(b.text for b in msg.content if b.type == "text")
 
 
 def make_brain(cfg: Config, persona: Persona) -> Brain:

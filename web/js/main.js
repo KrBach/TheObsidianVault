@@ -244,6 +244,8 @@ function tallyFree(x, y) {
 function tallyShouldStay() {
   const p = state.player, t = state.tally;
   const close = Math.max(Math.abs(p.x - t.x), Math.abs(p.y - t.y)) <= NOTICE_RANGE;
+  // A trip Tally chose on a tick goes ahead even with Kristian close: Tally said so, and goes.
+  if (t.chosen && t.path?.length && !state.busy && !state.talking) return false;
   return state.busy || state.talking || close || (state.goingToTally && !!state.onArrive);
 }
 
@@ -258,7 +260,11 @@ function tallyTick() {
   }
   if (t.path?.length) {
     const [nx, ny] = t.path[0];
-    if (!tallyFree(nx, ny)) { t.path = null; return; } // someone is in the way: re-plan next tick
+    if (!tallyFree(nx, ny)) { // someone is in the way: re-plan next step
+      t.path = t.chosen ? bfs([t.x, t.y], [t.goal.at], tallyFree) : null;
+      if (!t.path) t.chosen = false;
+      return;
+    }
     t.path.shift();
     const before = roomAt(t.x, t.y);
     t.x = nx; t.y = ny;
@@ -271,6 +277,8 @@ function tallyTick() {
       const [a, b] = t.goal.dwell || [20, 60];
       t.waitUntil = now + (a + Math.random() * (b - a)) * 1000;
       t.post = t.goal;
+      t.chosen = false;
+      t.arrivedAt = now;
     }
     return;
   }
@@ -282,6 +290,55 @@ function tallyTick() {
   if (path === null) { t.waitUntil = now + 5000; return; }
   t.goal = goal;
   t.path = path;
+}
+
+// ---------- Tally's tick ----------
+// Every few minutes (status.tick_minutes) the server asks Tally, in one small model call,
+// whether to go somewhere or say something. The answer names a spot (world.spots).
+// No ticks while the tab is hidden, while talking, or after 30 minutes without input.
+
+const IDLE_STOP_MS = 30 * 60 * 1000;
+let lastInput = performance.now();
+const touched = () => { lastInput = performance.now(); };
+
+async function tallyChooses() {
+  const t = state.tally, now = performance.now();
+  if (document.hidden || state.busy || state.talking || state.ticking || t.path?.length) return;
+  if (now - lastInput > IDLE_STOP_MS) return;
+  state.ticking = true;
+  let res;
+  try {
+    const r = await fetch("/api/tick", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tally: { x: t.x, y: t.y }, player: { x: state.player.x, y: state.player.y },
+        here_minutes: (now - (t.arrivedAt || state.bootedAt || now)) / 60000,
+        recent: state.lastSaid || "",
+      }),
+    });
+    res = await r.json();
+  } catch (_) {
+    res = null;
+  } finally {
+    state.ticking = false;
+  }
+  if (!res || state.busy || state.talking) return;
+  const mine = roomAt(state.player.x, state.player.y), theirs = roomAt(t.x, t.y);
+  if (res.say) {
+    const line = logLine(mine === theirs ? "Tally" : `Tally (in ${theirs ? theirs.name : "the vault"})`, "tally");
+    line.textContent = res.say;
+  }
+  if (res.go === "stay" || !res.at) {
+    t.waitUntil = Math.max(t.waitUntil || 0, performance.now() + 60000); // a choice to stay holds a while
+    return;
+  }
+  if (res.at[0] === t.x && res.at[1] === t.y) return;
+  const path = bfs([t.x, t.y], [res.at], tallyFree);
+  if (!path) return;
+  if (!res.say) log(`Tally sets off, ${res.name}.`, "action");
+  t.goal = { at: res.at, room: res.room, dwell: [90, 180], name: res.name };
+  t.path = path;
+  t.chosen = true;
 }
 
 const roomOf = (post) => post && state.world.rooms.find((r) => r.id === post.room);
@@ -373,7 +430,9 @@ async function say(text) {
   const tallyRoom = roomAt(state.tally.x, state.tally.y);
   const atDesk = state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1];
   const where = `Kristian is standing in ${room ? room.name : "the vault"}, next to you. ` +
-    `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}.`;
+    `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}, ` +
+    `at (${state.tally.x},${state.tally.y}).`;
+  state.lastSaid = text;
   try {
     await talk(text, where, {
       delta: (t) => { setTallyState("speaking"); body.textContent += t; logEl.scrollTop = logEl.scrollHeight; },
@@ -409,6 +468,7 @@ const KEYS = {
 };
 
 window.addEventListener("keydown", (e) => {
+  touched();
   if (ledger.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
     return;
@@ -498,7 +558,11 @@ async function boot() {
   state.tally.post = (w.tally_posts || [])[0];
   state.tally.waitUntil = performance.now() + 30000; // at the desk when you arrive
   setInterval(tallyTick, TALLY_STEP_MS);
-  window.vault = { state, renderers, portraits }; // handy from the browser console
+  state.bootedAt = performance.now();
+  canvas.addEventListener("pointerdown", touched);
+  const tickMin = Number(w.status.tick_minutes) || 0;
+  if (tickMin > 0) setInterval(tallyChooses, tickMin * 60000);
+  window.vault = { state, renderers, portraits, tallyChooses }; // handy from the browser console
 
   const st = w.status;
   const statusEl = $("status");

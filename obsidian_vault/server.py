@@ -11,6 +11,7 @@ from .brains import Brain, make_brain
 from .config import REPO_ROOT, Config, load_config
 from .ledger import Ledger, LedgerError
 from .persona import Persona, load_persona, vault_shelves
+from .tick import Ticker
 
 WEB_DIR = REPO_ROOT / "web"
 WORLD_FILE = REPO_ROOT / "world" / "vault.json"
@@ -23,6 +24,7 @@ class Game:
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
         self.ledger = Ledger(cfg)
+        self.ticker = Ticker(cfg, self.brain)
 
     def world(self) -> dict:
         world = json.loads(WORLD_FILE.read_text(encoding="utf-8"))
@@ -33,6 +35,7 @@ class Game:
             "core_loaded": self.persona.loaded,
             "core_missing": self.persona.missing,
             "writes": self.cfg.writes_mode,
+            "tick_minutes": self.cfg.tick_minutes,
         }
         return world
 
@@ -74,6 +77,14 @@ def make_handler(game: Game):
             if self.path == "/api/reset":
                 game.brain.reset()
                 return self._json({"ok": True})
+
+            if self.path == "/api/tick":
+                if game.cfg.tick_minutes <= 0:
+                    return self._json({"go": "stay", "at": None, "say": "", "skipped": "off"})
+                result = game.ticker.tick(game.world(), payload)
+                if result.get("error"):
+                    print(f"  tick failed: {result['error']}")
+                return self._json(result)
 
             if self.path.startswith("/api/pending/"):
                 parts = self.path.split("/")  # ["", "api", "pending", id, action]
@@ -133,6 +144,10 @@ def main() -> None:
     modes = {"off": "off (read-only)", "review": "review (every change waits for you in the game)",
              "direct": "direct (log and coaching lines at once; note changes wait for you)"}
     print(f"  writing: {modes.get(cfg.writes_mode, cfg.writes_mode)}")
+    if cfg.tick_minutes > 0:
+        print(f"  tick: Tally decides where to go every {cfg.tick_minutes:g} min ({cfg.tick_model or 'default model'})")
+    else:
+        print("  tick: off")
     url = f"http://{cfg.host}:{cfg.port}/"
     server = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(game))
     print(f"  open {url}  (Ctrl+C to leave)")

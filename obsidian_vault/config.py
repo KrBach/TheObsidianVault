@@ -31,6 +31,8 @@ class Config:
     writes_folders: list[str] = field(default_factory=lambda: list(DEFAULT_FOLDERS))
     state_dir: Path = REPO_ROOT / ".vault-state"
     config_path: Path | None = None
+    tick_minutes: float = 6.0
+    tick_model: str = "haiku"
 
 
 # Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
@@ -91,6 +93,8 @@ def load_config(path: Path | None = None) -> Config:
         writes_folders=list(writes.get("folders", DEFAULT_FOLDERS)),
         state_dir=_expand(os.environ.get("VAULT_STATE_DIR") or writes.get("state_dir", ".vault-state")),
         config_path=path.resolve() if path.exists() else None,
+        tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),
+        tick_model=str(tally.get("tick_model", "haiku")),
     )
     if cfg.writes_mode not in WRITE_MODES:
         print(f'note: writes.mode "{cfg.writes_mode}" is not one of {", ".join(WRITE_MODES)}; using "off".')
