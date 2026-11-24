@@ -191,7 +191,7 @@ function walkTo(x, y) {
   if (state.talking) stopTalking();
   const t = tileAt(x, y);
   if (!t || !t.def) return;
-  const isTally = (x === state.tally.x && y === state.tally.y) || t.id === "desk";
+  const isTally = (x === state.tally.x && y === state.tally.y) || t.id?.startsWith("desk");
   let goals, onArrive = null;
   if (isTally) {
     goals = talkSpots();

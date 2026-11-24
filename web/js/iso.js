@@ -26,6 +26,8 @@ export const TW = 64; // tile width on screen (diamond)
 export const TH = 32; // tile height on screen
 
 const AMBIENT = [0.2, 0.17, 0.27];
+// Sprites are painted with their own shading, so they take the scene's light a little brighter.
+const SPRITE_GAIN = 1.6;
 // Flat things are drawn with the floor; only things that stand up are depth-sorted.
 const FLAT = new Set(["floor", "glint", "door", "edge", "mat", "papers", "pool"]);
 
@@ -64,6 +66,7 @@ export class IsoRenderer {
     this.hover = null;
     this.images = {};
     this.colourCache = new Map();
+    this.shadeCache = new Map();
     this.loadSprites();
     this.backdrops = (world.backdrops || []).map((b) => {
       const img = new Image();
@@ -92,12 +95,39 @@ export class IsoRenderer {
   }
 
   // Draw a sprite of any size with its anchor (default: bottom centre) on the given point.
-  drawSprite(img, iso, sx, sy, defaultAnchor, alpha = 1) {
+  // With `light`, the sprite is shaded by the light on its tile, like the placeholders.
+  drawSprite(img, iso, sx, sy, defaultAnchor, alpha = 1, light = null, src = null) {
     const k = iso.scale || 1;
     const [ax, ay] = iso.anchor || defaultAnchor;
+    const [x0, y0, w, h] = src || [0, 0, img.naturalWidth, img.naturalHeight];
+    const shaded = light && iso.lit !== false ? this.shade(img, light, src) : null;
     this.ctx.globalAlpha = alpha;
-    this.ctx.drawImage(img, sx - ax * k, sy - ay * k, img.naturalWidth * k, img.naturalHeight * k);
+    if (shaded) this.ctx.drawImage(shaded, sx - ax * k, sy - ay * k, w * k, h * k);
+    else this.ctx.drawImage(img, x0, y0, w, h, sx - ax * k, sy - ay * k, w * k, h * k);
     this.ctx.globalAlpha = 1;
+  }
+
+  // A copy of the sprite multiplied by the tile's light, cached by (sprite, light level).
+  shade(img, light, src) {
+    const q = light.map((v) => Math.min(16, Math.round(Math.min(1, v * SPRITE_GAIN) * 16)));
+    const key = `${img.src}|${src || ""}|${q.join(",")}`;
+    let out = this.shadeCache.get(key);
+    if (out) return out;
+    if (this.shadeCache.size > 4000) this.shadeCache.clear();
+    const [x0, y0, w, h] = src || [0, 0, img.naturalWidth, img.naturalHeight];
+    out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    const o = out.getContext("2d");
+    o.imageSmoothingEnabled = false;
+    o.drawImage(img, x0, y0, w, h, 0, 0, w, h);
+    o.globalCompositeOperation = "multiply";
+    o.fillStyle = `rgb(${q.map((v) => (v * 16) | 0).join(",")})`;
+    o.fillRect(0, 0, w, h);
+    o.globalCompositeOperation = "destination-in"; // keep the sprite's own transparency
+    o.drawImage(img, x0, y0, w, h, 0, 0, w, h);
+    this.shadeCache.set(key, out);
+    return out;
   }
 
   // True when a loaded painted backdrop covers this tile.
@@ -224,6 +254,13 @@ export class IsoRenderer {
 
   drawFloor(x, y, sx, sy, iso, light) {
     const c = this.ctx;
+    // a floor sprite (64x32 diamond) replaces the drawn floor everywhere, glints included
+    const glint = this.spriteFor(this.tiles.floor_glint || {});
+    const floor = (iso.shape === "glint" && glint) || this.spriteFor(this.tiles.floor || {});
+    if (floor) {
+      this.drawSprite(floor, {}, sx, sy, [floor.naturalWidth / 2, floor.naturalHeight / 2], 1, light);
+      return;
+    }
     const n = hash(x, y);
     const base = this.col(iso.floor || "#1d1628");
     c.fillStyle = rgb(base, light, 0.85 + n * 0.3);
@@ -240,9 +277,15 @@ export class IsoRenderer {
     const iso = this.isoOf(id);
     const [sx, sy] = IsoRenderer.toScreen(x, y);
     const base = this.col(iso.color || "#333");
+    // part of a bigger object whose sprite is drawn on another tile (the ends of the desk)
+    if (iso.hideWhenSprite && this.spriteFor(this.tiles[iso.hideWhenSprite] || {})) return;
     const sprite = this.spriteFor(this.tiles[id] || {});
     if (sprite) {
-      this.drawSprite(sprite, iso, sx, sy, [sprite.naturalWidth / 2, sprite.naturalHeight - TH / 2], cut ? 0.3 : 1);
+      this.drawSprite(sprite, iso, sx, sy, [sprite.naturalWidth / 2, sprite.naturalHeight - TH / 2], cut ? 0.3 : 1, light);
+      if (iso.shape === "flame") {
+        const flick = 0.8 + 0.2 * Math.sin(t * 13 + x) * Math.sin(t * 9 + y);
+        this.glow(sx, sy - (iso.glowAt ?? (iso.h || 14) + 6), 26 * flick, [255, 150, 60], 0.45);
+      }
       return;
     }
 
@@ -426,7 +469,15 @@ export class IsoRenderer {
     }
     const sprite = this.spriteFor(def);
     if (sprite) {
-      this.drawSprite(sprite, iso, sx, sy, [sprite.naturalWidth / 2, sprite.naturalHeight], e.alpha ?? 1);
+      const k = iso.scale || 1;
+      const bob = Math.sin(t * 2 + e.rx) * 0.6;
+      this.drawSprite(sprite, iso, sx, sy - (e.moving ? 0 : bob), [sprite.naturalWidth / 2, sprite.naturalHeight], e.alpha ?? 1, light);
+      const head = sy - (iso.anchor ? iso.anchor[1] : sprite.naturalHeight) * k;
+      if (iso.glow && e.state && e.state !== "idle") {
+        const g = e.state === "thinking" ? 0.18 + 0.15 * Math.sin(t * 3) : 0.25;
+        this.glow(sx, head + 10, 20, this.col(iso.glow), g);
+      }
+      if (e.state === "thinking") this.thinkingMotes(sx, head - 4, t - (e.stateSince ?? t), this.col(iso.glow || "#ffffff"));
       return;
     }
 
@@ -514,6 +565,7 @@ export class IsoRenderer {
     c.fillStyle = "#050308";
     c.fillRect(0, 0, this.w, this.h);
     c.setTransform(this.dpr * this.zoom, 0, 0, this.dpr * this.zoom, this.dpr * this.origin[0], this.dpr * this.origin[1]);
+    c.imageSmoothingEnabled = false; // pixel-art sprites stay crisp when zoomed
 
     // moving lights: Kristian carries a small lantern, Tally a faint glow
     const extra = entities.map((e) => {

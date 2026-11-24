@@ -26,6 +26,7 @@
       "solid": false,
       "name": "floor",
       "iso": {
+        "sprite": "sprites/floor.png",
         "shape": "floor",
         "floor": "#1d1628",
         "painted": true
@@ -39,6 +40,7 @@
       "name": "floor",
       "desc": "A fleck of violet light in the glass floor.",
       "iso": {
+        "sprite": "sprites/floor_glint.png",
         "shape": "glint",
         "floor": "#1d1628",
         "color": "#8a5cff",
@@ -65,6 +67,7 @@
       "solid": true,
       "name": "shelf",
       "iso": {
+        "sprite": "sprites/bookshelf.png",
         "shape": "box",
         "h": 46,
         "f": 0.85,
@@ -79,6 +82,7 @@
       "name": "archive shelf",
       "desc": "Old log entries, filed away. Cold memory, read on demand.",
       "iso": {
+        "sprite": "sprites/archive_shelf.png",
         "shape": "box",
         "h": 30,
         "f": 0.85,
@@ -94,11 +98,28 @@
       "name": "Tally's desk",
       "desc": "The ledger lies open. Neat columns, dated entries, a note in the margin about where the map ends.",
       "iso": {
+        "sprite": "sprites/desk.png",
         "shape": "box",
         "h": 16,
         "f": 0.9,
         "color": "#5a3c22",
         "ledger": true
+      }
+    },
+    "desk_side": {
+      "glyph": "π",
+      "fg": "#c9a86a",
+      "bg": "#1a1220",
+      "solid": true,
+      "name": "Tally's desk",
+      "desc": "The far end of the desk, stacked with loose pages waiting for the ledger.",
+      "iso": {
+        "_note": "the desk sprite is drawn on the middle tile; with no sprite these draw as the desk box",
+        "shape": "box",
+        "h": 16,
+        "f": 0.9,
+        "color": "#5a3c22",
+        "hideWhenSprite": "desk"
       }
     },
     "brazier": {
@@ -109,6 +130,7 @@
       "name": "brazier",
       "anim": "flicker",
       "iso": {
+        "sprite": "sprites/brazier.png",
         "shape": "flame",
         "h": 14,
         "f": 0.35,
@@ -247,6 +269,7 @@
       "name": "Tally",
       "desc": "Tally, keeper of the ledger. A careful cartographer's apprentice.",
       "iso": {
+        "sprite": "sprites/tally_v2.png",
         "color": "#2f8f86",
         "hood": true,
         "glow": "#5fe0d0",
@@ -261,7 +284,7 @@
         }
       },
       "portrait": {
-        "image": null,
+        "image": "sprites/tally_portrait.png",
         "frame": "#5fe0d0",
         "states": {
           "thinking": { "frames": [], "fps": 8 },
