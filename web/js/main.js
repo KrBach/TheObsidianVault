@@ -1,11 +1,15 @@
 import { GlyphRenderer } from "./renderer.js";
 import { IsoRenderer } from "./iso.js";
+import { Portrait } from "./portrait.js";
 import { talk, resetConversation } from "./talk.js";
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log"), form = $("talk"), input = $("say");
 
 const SHELF_COLOURS = ["#c98a5a", "#7fb07a", "#c0a050", "#6a9ad0", "#b07ac0", "#d07070", "#70c0c0", "#a0a0a0"];
+
+let portraits = null;
+const bottom = document.getElementById("bottom");
 
 const state = {
   world: null,
@@ -223,6 +227,8 @@ function startTalking() {
   if (!state.talking) log("Tally looks up from the ledger.", "action");
   state.talking = true;
   form.hidden = false;
+  bottom.classList.add("talking");
+  portraits?.player.setSpeaking(!state.busy);
   input.focus();
 }
 
@@ -230,6 +236,7 @@ function stopTalking() {
   if (!state.talking) return;
   state.talking = false;
   form.hidden = true;
+  bottom.classList.remove("talking");
   input.blur();
   log("You step back from the desk.", "action");
 }
@@ -238,6 +245,8 @@ async function say(text) {
   if (state.busy) return;
   state.busy = true;
   input.disabled = true;
+  portraits?.player.setSpeaking(false);
+  portraits?.tally.setSpeaking(true);
   logLine("Kristian", "you").textContent = text;
   let body = logLine("Tally", "tally");
   body.classList.add("thinking");
@@ -268,6 +277,8 @@ async function say(text) {
   if (!body.textContent) body.parentElement.remove();
   state.busy = false;
   input.disabled = false;
+  portraits?.tally.setSpeaking(false);
+  portraits?.player.setSpeaking(state.talking);
   if (state.talking) input.focus();
 }
 
@@ -358,6 +369,10 @@ async function boot() {
     ev.preventDefault();
     r.zoom = Math.min(2, Math.max(0.5, r.zoom * (ev.deltaY < 0 ? 1.1 : 1 / 1.1)));
   }, { passive: false });
+  portraits = {
+    tally: new Portrait($("portrait-tally"), w.creatures.tally),
+    player: new Portrait($("portrait-player"), w.creatures.player),
+  };
   setInterval(stepAlongPath, 120);
   window.vault = { state, renderers }; // handy from the browser console
 
@@ -383,6 +398,7 @@ async function boot() {
       e.moving = Math.abs(e.x - e.rx) + Math.abs(e.y - e.ry) > 0.05;
     }
     renderers[state.view].draw(w, [state.tally, state.player], t, state.player);
+    if (state.talking) { portraits.tally.draw(t); portraits.player.draw(t); }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

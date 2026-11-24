@@ -1,5 +1,5 @@
 {
-  "_about": "Every tile and creature has a name. Two views draw them. ASCII view: `glyph` in `fg` on `bg`; optional `sprite` ([col,row] on `sprites.sheet`, or an image path). Isometric view: the `iso` block (shape, h, f, color, light, painted) draws a lit placeholder; set `iso.sprite` to an image of any size and it replaces the placeholder, anchored at `iso.anchor` (default: bottom centre) on the tile, scaled by `iso.scale`. See web/js/iso.js for details.",
+  "_about": "Every tile and creature has a name. Two views draw them. ASCII view: `glyph` in `fg` on `bg`; optional `sprite` ([col,row] on `sprites.sheet`, or an image path). Isometric view: the `iso` block (shape, h, f, color, light, painted) draws a lit placeholder; set `iso.sprite` to an image of any size and it replaces the placeholder, anchored at `iso.anchor` (default: bottom centre) on the tile, scaled by `iso.scale`. See web/js/iso.js for details. Talk-box portraits: `creatures.<name>.portrait.image` (any size, fitted to the frame) and `frame` colour; a placeholder bust is drawn until an image is set.",
   "sprites": {
     "sheet": null,
     "cell": 16
@@ -233,6 +233,10 @@
           "radius": 4.5,
           "strength": 0.55
         }
+      },
+      "portrait": {
+        "image": null,
+        "frame": "#d9b060"
       }
     },
     "tally": {
@@ -249,6 +253,10 @@
           "radius": 2.5,
           "strength": 0.35
         }
+      },
+      "portrait": {
+        "image": null,
+        "frame": "#5fe0d0"
       }
     }
   }

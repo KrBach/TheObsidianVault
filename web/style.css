@@ -33,8 +33,17 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .keys b { color: var(--text); font-weight: normal; }
 .keys div { color: var(--dim); }
 
-#bottom { flex: 0 0 26%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); min-height: 160px; }
+#bottom { flex: 0 0 26%; transition: flex-basis 0.2s; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); min-height: 160px; }
+#dialogue { flex: 1 1 auto; display: flex; min-height: 0; }
 #log { flex: 1 1 auto; overflow-y: auto; padding: 8px; white-space: pre-wrap; }
+
+/* Portraits show only while talking to Tally. */
+.portrait { display: none; margin: 8px; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px; }
+#bottom.talking .portrait { display: flex; }
+.portrait .art { width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
+.portrait .art canvas, .portrait .art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.portrait .name { color: var(--frame); font-size: 12px; letter-spacing: 0.1em; }
+.portrait.speaking .art { opacity: 1; filter: none; box-shadow: 0 0 0 1px #000, 0 0 14px var(--frame); }
 #log .you { color: var(--you); }
 #log .tally { color: var(--tally); }
 #log .tally .who, #log .you .who { opacity: 0.7; }
@@ -45,6 +54,7 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 @keyframes blink { 50% { opacity: 0; } }
 
 #talk[hidden] { display: none; }
+#bottom.talking { flex-basis: 210px; }
 #talk { display: flex; gap: 8px; border-top: 1px solid var(--line); padding: 6px 8px; }
 #talk .prompt { color: var(--you); }
 #say { flex: 1; background: transparent; border: 0; color: var(--text); font: inherit; outline: none; }
@@ -54,4 +64,5 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
   #side { width: auto; flex: 0 0 auto; flex-direction: row; overflow-x: auto; }
   #side .panel { min-width: 200px; }
   .keys { display: none; }
+  .portrait .art { width: 72px; height: 90px; }
 }
