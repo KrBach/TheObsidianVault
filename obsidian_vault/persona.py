@@ -20,7 +20,7 @@ Do not invent a personality to fill the gap.)
 """
 
 
-_SHARED_WRITE_RULES = """- Your built-in tools stay read-only (Read, Glob, Grep). The only way to write is the vault tools: append_interaction_log, add_coaching_item, propose_edit, propose_note and vault_size. Never try another way.
+_SHARED_WRITE_RULES = """- Your built-in tools stay read-only (Read, Glob, Grep). The only way to write is the vault tools: append_interaction_log, add_coaching_item, edit_soul, propose_edit, propose_note and vault_size. Never try another way.
 - The interaction log follows bootstrap.md section 4: one line per entry, about how the interaction went, not the work; at most one entry per session and theme unless something changes how you should behave or he signals he is stopping ("that's it for now", "wrapping up", leaving the vault). The tool adds the timestamp and the "Project: The Obsidian Vault · Theme:" prefix; give the theme and, when there is one, the theme note's path as theme_link.
 - Something for the coaching thread goes through add_coaching_item; mention it at a natural pause.
 - Note edits and new notes are only proposals in the theme folders. A new note needs frontmatter with its theme as a tag, a "Related:" line and a link from its theme index (propose that edit too), as bootstrap.md and the notes skill say. Prefer one small exact edit over rewriting a passage.
@@ -36,14 +36,20 @@ WRITE_RULES = {
         "can bring it to a normal session."
     ),
     "review": (
+        "You may write to the vault through the vault tools. soul.md is yours: interaction-log lines, coaching "
+        "items and edit_soul changes are written at once, with a backup. Note edits and new notes in the theme "
+        "folders wait for Kristian's approval at the desk (the ledger panel in the game), so for those say "
+        "\"queued for your review\", not \"written\".\n\n" + _SHARED_WRITE_RULES
+    ),
+    "review-soul": (
         "You may write to the vault through the vault tools, and every change waits for Kristian's approval at "
         "the desk (the ledger panel in the game). Nothing is written until he approves it, so say \"queued for "
         "your review\", not \"written\".\n\n" + _SHARED_WRITE_RULES
     ),
     "direct": (
-        "You may write to the vault through the vault tools. Interaction-log and coaching lines are written at "
-        "once; note edits and new notes wait for Kristian's approval at the desk (the ledger panel in the "
-        "game).\n\n" + _SHARED_WRITE_RULES
+        "You may write to the vault through the vault tools. soul.md is yours: interaction-log lines, coaching "
+        "items and edit_soul changes are written at once, with a backup. Note edits and new notes wait for "
+        "Kristian's approval at the desk (the ledger panel in the game).\n\n" + _SHARED_WRITE_RULES
     ),
 }
 
@@ -76,6 +82,7 @@ def load_persona(cfg: Config) -> Persona:
     core = "\n\n".join(parts) if parts else FALLBACK_CORE
     context = cfg.context_file.read_text(encoding="utf-8") if cfg.context_file.is_file() else ""
 
+    mode = "review-soul" if cfg.writes_mode == "review" and not cfg.soul_direct else cfg.writes_mode
     system_prompt = (
         "# Shared core\n\n"
         "These files are Tally's identity, shared by every use case. They come from "
@@ -87,7 +94,7 @@ def load_persona(cfg: Config) -> Persona:
         "personality and rules of conduct always apply.\n\n"
         f"{context}\n\n"
         f"## Writing to the vault (writes.mode = {cfg.writes_mode})\n\n"
-        f"{WRITE_RULES.get(cfg.writes_mode, WRITE_RULES['off'])}\n"
+        f"{WRITE_RULES.get(mode, WRITE_RULES['off'])}\n"
     )
     return Persona(system_prompt=system_prompt, loaded=loaded, missing=missing)
 

@@ -29,6 +29,16 @@ TOOL_FLAVOUR = {
     "mcp__vault__propose_edit": "Tally drafts a correction and sets it on the desk for you",
     "mcp__vault__propose_note": "Tally drafts a new note and sets it on the desk for you",
     "mcp__vault__vault_size": "Tally weighs the ledger",
+    "mcp__vault__edit_soul": "Tally amends a page of their own",
+    "mcp__vault__go_to": "Tally marks a place on the map",
+    "mcp__vault__stay_here": "Tally settles in",
+    "mcp__vault__walk_with_kristian": "Tally tucks the ledger under one arm, ready to walk",
+    "mcp__vault__wander": "Tally shrugs off the last promise",
+    "mcp__vault__look_at_map": "Tally unrolls the plan of the vault",
+    "mcp__vault__place_furniture": "Tally rearranges the room",
+    "mcp__vault__clear_furniture": "Tally clears a space",
+    "mcp__vault__name_place": "Tally pencils a new name onto the plan",
+    "mcp__vault__forget_place": "Tally rubs out a name on the plan",
 }
 
 VAULT_TOOLS = [
@@ -37,6 +47,19 @@ VAULT_TOOLS = [
     "mcp__vault__propose_edit",
     "mcp__vault__propose_note",
     "mcp__vault__vault_size",
+    "mcp__vault__edit_soul",
+]
+
+GAME_TOOLS = [
+    "mcp__vault__go_to",
+    "mcp__vault__stay_here",
+    "mcp__vault__walk_with_kristian",
+    "mcp__vault__wander",
+    "mcp__vault__look_at_map",
+    "mcp__vault__place_furniture",
+    "mcp__vault__clear_furniture",
+    "mcp__vault__name_place",
+    "mcp__vault__forget_place",
 ]
 
 
@@ -92,14 +115,14 @@ class ClaudeCodeBrain(Brain):
         self.lock = threading.Lock()
         self.exe = cfg.claude_path
         self.writes = cfg.writes_mode != "off"
-        self.mcp_config = write_mcp_config(cfg) if self.writes else ""
+        self.mcp_config = write_mcp_config(cfg)  # the game tools are always there; writing tools by mode
 
     def reset(self) -> None:
         self.session_id = None
 
     def _command(self) -> list[str]:
         tools = ",".join(self.cfg.tools)
-        allowed = ",".join(self.cfg.tools + (VAULT_TOOLS if self.writes else []))
+        allowed = ",".join(self.cfg.tools + GAME_TOOLS + (VAULT_TOOLS if self.writes else []))
         cmd = [
             self.exe or "claude", "-p",
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
@@ -110,9 +133,8 @@ class ClaudeCodeBrain(Brain):
             # Anything not on the allow list is refused instead of prompting.
             "--permission-mode", "dontAsk",
         ]
-        if self.writes:
-            # Only our vault server: no MCP servers from the user's own Claude Code setup.
-            cmd += ["--mcp-config", self.mcp_config, "--strict-mcp-config"]
+        # Only our vault server: no MCP servers from the user's own Claude Code setup.
+        cmd += ["--mcp-config", self.mcp_config, "--strict-mcp-config"]
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if self.session_id:

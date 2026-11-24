@@ -63,19 +63,28 @@ def build_prompt(world: dict, payload: dict) -> str:
     mins = payload.get("here_minutes")
     if isinstance(mins, (int, float)):
         lines.append(f"You have been here about {max(1, round(mins))} minute(s).")
+    doing = " ".join(str(payload.get("doing") or "").split())[:200]
+    why = " ".join(str(payload.get("why") or "").split())[:200]
+    if doing:
+        lines.append(f"What you are doing: {doing}.")
+    if why:
+        lines.append(f"Why: {why}")
     dist = max(abs(px - tx), abs(py - ty))
     lines.append(f"Kristian is at ({px},{py}) in {proom['name'] if proom else 'the vault'}, "
                  f"{dist} step(s) from you" + (" (same room)." if proom is room and room else "."))
-    recent = str(payload.get("recent") or "").strip()[:300]
+    recent = " ".join(str(payload.get("recent") or "").split())[:300]
+    reply = " ".join(str(payload.get("recent_reply") or "").split())[:300]
     if recent:
         lines.append(f'The last thing he said to you: "{recent}"')
+    if reply:
+        lines.append(f'What you answered (whatever you said you did there is done): "{reply}"')
     lines.append("")
     lines.append("Places you can go (id: where, room):")
     rooms = {r["id"]: r["name"] for r in world.get("rooms", [])}
     for s in spots:
         lines.append(f"- {s['id']}: {s['name']}, {rooms.get(s['room'], s['room'])}")
     lines.append("")
-    lines.append('Do you want to go somewhere, or stay? Answer with the JSON object only.')
+    lines.append('Do you want to go somewhere, or stay ("stay" keeps what you are doing)? Answer with the JSON object only.')
     return "\n".join(lines)
 
 
@@ -90,10 +99,11 @@ def parse(reply: str, world: dict) -> dict:
             data = {}
     go = str(data.get("go") or "stay").strip().lower()
     say = " ".join(str(data.get("say") or "").split())[:160]
+    why = " ".join(str(data.get("why") or "").split())[:160]
     spot = next((s for s in world.get("spots", []) if s["id"] == go), None)
     if not spot:
-        return {"go": "stay", "at": None, "say": say}
-    return {"go": spot["id"], "at": spot["at"], "room": spot["room"], "name": spot["name"], "say": say}
+        return {"go": "stay", "at": None, "say": say, "why": why}
+    return {"go": spot["id"], "at": spot["at"], "room": spot.get("room", ""), "name": spot["name"], "say": say, "why": why}
 
 
 class Ticker:

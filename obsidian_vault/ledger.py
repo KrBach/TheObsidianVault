@@ -1,9 +1,10 @@
 """Tally's writes to the vault: small, checked, reversible.
 
-Tally never edits files freely. It asks for one of four changes:
+Tally never edits files freely. It asks for one of five changes:
 
   append_log      one new line at the end of soul.md's "Interaction log"
   add_coaching    one new item under soul.md's "For the coaching thread"
+  edit_soul       replace one exact passage in soul.md
   propose_edit    replace one exact passage in an existing note
   propose_note    create a new note
 
@@ -11,8 +12,9 @@ Each change is either applied at once or queued for Kristian to approve in the g
 depending on writes.mode in config.toml:
 
   off      nothing can be written (the default before this feature)
-  review   every change waits for approval
-  direct   log and coaching lines are written at once; note edits and new notes still wait
+  review   note edits and new notes wait for approval; soul.md changes are written at once,
+           because soul.md is Tally's own (set writes.soul_direct = false to review those too)
+  direct   the same as review with soul_direct on
 
 Rules that always hold:
 - only .md files inside the vault folder; never bootstrap.md, archive/, templates/ or
@@ -164,6 +166,20 @@ class Ledger:
               "before": "- (nothing else open)", "summary": "Add an item for the coaching thread"}
         return self._submit(op, direct_ok=True)
 
+    def edit_soul(self, old: str, new: str, reason: str) -> Result:
+        p = self.soul()
+        if not p.is_file():
+            raise LedgerError("soul.md is missing")
+        text = p.read_text(encoding="utf-8")
+        if not old:
+            raise LedgerError("old text is empty")
+        count = text.count(old)
+        if count != 1:
+            raise LedgerError(f"the old text occurs {count} times in soul.md; it must occur exactly once")
+        op = {"kind": "replace", "file": SOUL, "old": old, "new": new, "sha": _sha(text),
+              "summary": _one_line(reason, "reason")}
+        return self._submit(op, direct_ok=True)
+
     def propose_edit(self, path: str, old: str, new: str, reason: str) -> Result:
         p = self.resolve(path, note=True)
         if not p.is_file():
@@ -193,7 +209,7 @@ class Ledger:
     def _submit(self, op: dict, direct_ok: bool) -> Result:
         if self.mode == "off":
             raise LedgerError("writing is switched off (writes.mode = \"off\" in config.toml)")
-        if self.mode == "direct" and direct_ok:
+        if direct_ok and (self.mode == "direct" or (self.mode == "review" and self.cfg.soul_direct)):
             self.apply(op)
             return Result("applied", f"Written to {op['file']}. {self.size_report()}")
         op = {**op, "id": uuid.uuid4().hex[:10], "created": time.time()}

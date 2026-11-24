@@ -12,10 +12,9 @@ from .config import REPO_ROOT, Config, load_config
 from .ledger import Ledger, LedgerError
 from .persona import Persona, load_persona, vault_shelves
 from .tick import Ticker
+from .world import World
 
 WEB_DIR = REPO_ROOT / "web"
-WORLD_FILE = REPO_ROOT / "world" / "vault.json"
-TILES_FILE = REPO_ROOT / "world" / "tiles.json"
 
 
 class Game:
@@ -25,10 +24,10 @@ class Game:
         self.brain: Brain = make_brain(cfg, self.persona)
         self.ledger = Ledger(cfg)
         self.ticker = Ticker(cfg, self.brain)
+        self.layout = World(cfg.state_dir)
 
     def world(self) -> dict:
-        world = json.loads(WORLD_FILE.read_text(encoding="utf-8"))
-        world.update(json.loads(TILES_FILE.read_text(encoding="utf-8")))
+        world = self.layout.load()  # the repo's map plus Tally's own changes
         world["shelves"] = vault_shelves(self.cfg)
         world["status"] = {
             "brain": self.brain.name,
@@ -56,11 +55,14 @@ def make_handler(game: Game):
 
         def _json(self, data, status=HTTPStatus.OK):
             body = json.dumps(data).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page went away (reload, closed tab) before the answer
 
         def do_GET(self):
             if self.path == "/api/world":
@@ -114,8 +116,17 @@ def make_handler(game: Game):
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
+            layout_before = game.layout.version()
+            game.layout.take_intent()  # an old intent from a reply that never finished does not count
             try:
                 for event in game.brain.talk(text):
+                    if event.get("type") == "done":
+                        # Tally's tools said where to be, or changed the room: tell the game before closing.
+                        intent = game.layout.take_intent()
+                        if intent:
+                            self.wfile.write(f"data: {json.dumps({'type': 'intent', **intent})}\n\n".encode())
+                        if game.layout.version() != layout_before:
+                            self.wfile.write(f"data: {json.dumps({'type': 'world'})}\n\n".encode())
                     self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
@@ -141,8 +152,9 @@ def main() -> None:
     else:
         print(f"  WARNING: Tally's core is incomplete. Missing: {', '.join(p.missing)}")
         print("  Set tally.core_dir in config.toml (copy config.example.toml).")
-    modes = {"off": "off (read-only)", "review": "review (every change waits for you in the game)",
-             "direct": "direct (log and coaching lines at once; note changes wait for you)"}
+    modes = {"off": "off (read-only)", "review": ("review (note changes wait for you in the game; soul.md is Tally's own)" if cfg.soul_direct
+                       else "review (every change waits for you in the game)"),
+             "direct": "direct (soul.md at once; note changes wait for you)"}
     print(f"  writing: {modes.get(cfg.writes_mode, cfg.writes_mode)}")
     if cfg.tick_minutes > 0:
         print(f"  tick: Tally decides where to go every {cfg.tick_minutes:g} min ({cfg.tick_model or 'default model'})")

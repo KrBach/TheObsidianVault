@@ -57,8 +57,9 @@ class LedgerTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def ledger(self, mode="review") -> Ledger:
-        cfg = Config(core_dir=self.vault, writes_mode=mode, writes_folders=["games"], state_dir=self.state)
+    def ledger(self, mode="review", soul_direct=False) -> Ledger:
+        cfg = Config(core_dir=self.vault, writes_mode=mode, writes_folders=["games"], state_dir=self.state,
+                     soul_direct=soul_direct)
         return Ledger(cfg)
 
     def soul(self) -> str:
@@ -88,6 +89,16 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(len(list((self.state / "backups").iterdir())), 1)
         journal = [json.loads(l) for l in (self.state / "journal.jsonl").read_text().splitlines()]
         self.assertEqual(journal[-1]["event"], "written")
+
+    def test_soul_is_tallys_own_in_review_mode(self):
+        led = self.ledger("review", soul_direct=True)
+        self.assertEqual(led.append_log("Games", "hi").status, "applied")
+        r = led.edit_soul("- First item.", "- First item, revised.", "Sharper wording")
+        self.assertEqual(r.status, "applied")
+        self.assertIn("- First item, revised.", self.soul())
+        with self.assertRaises(LedgerError):
+            led.edit_soul("not in the soul", "x", "nothing")
+        self.assertEqual(led.propose_edit("games/chess.md", "e4", "d4", "openings").status, "queued")
 
     def test_direct_writes_log_at_once_but_queues_notes(self):
         led = self.ledger("direct")
@@ -189,7 +200,7 @@ class McpTest(unittest.TestCase):
                                  input="\n".join(json.dumps(m) for m in msgs) + "\n", capture_output=True, timeout=20)
             replies = {r["id"]: r for r in map(json.loads, out.stdout.splitlines())}
             self.assertEqual(replies[1]["result"]["serverInfo"]["name"], "vault")
-            self.assertEqual({t["name"] for t in replies[2]["result"]["tools"]}, {t["name"] for t in vault_mcp.TOOLS})
+            self.assertEqual({t["name"] for t in replies[2]["result"]["tools"]}, {t["name"] for t in vault_mcp.TOOLS + vault_mcp.GAME_TOOLS})
             self.assertFalse(replies[3]["result"]["isError"])
             self.assertIn("Theme: Games: hello", (vault / "soul.md").read_text())
             self.assertTrue(replies[4]["result"]["isError"])

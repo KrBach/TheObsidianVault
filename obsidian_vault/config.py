@@ -29,6 +29,7 @@ class Config:
     port: int = 8765
     writes_mode: str = "review"
     writes_folders: list[str] = field(default_factory=lambda: list(DEFAULT_FOLDERS))
+    soul_direct: bool = True  # soul.md is Tally's own: their lines and edits go in without review
     state_dir: Path = REPO_ROOT / ".vault-state"
     config_path: Path | None = None
     tick_minutes: float = 6.0
@@ -91,6 +92,7 @@ def load_config(path: Path | None = None) -> Config:
         port=int(os.environ.get("VAULT_PORT") or server.get("port", 8765)),
         writes_mode=str(os.environ.get("VAULT_WRITES") or writes.get("mode", "review")).lower(),
         writes_folders=list(writes.get("folders", DEFAULT_FOLDERS)),
+        soul_direct=bool(writes.get("soul_direct", True)),
         state_dir=_expand(os.environ.get("VAULT_STATE_DIR") or writes.get("state_dir", ".vault-state")),
         config_path=path.resolve() if path.exists() else None,
         tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),

@@ -1,7 +1,9 @@
-"""A tiny MCP server (stdio, no packages) that gives Tally the vault-writing tools.
+"""A tiny MCP server (stdio, no packages) that gives Tally the game's tools.
 
-Claude Code starts it with `python3 -m obsidian_vault.vault_mcp` when writes.mode is not
-"off". Every tool goes through the Ledger, which enforces the rules in ledger.py.
+Claude Code starts it with `python3 -m obsidian_vault.vault_mcp`. Two kinds of tools:
+- the game tools (always): where Tally goes or stays, and moving furniture in the vault
+  (world.py, which runs every change through the map check);
+- the vault-writing tools (when writes.mode is not "off"), all through the Ledger (ledger.py).
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ import sys
 
 from .config import load_config
 from .ledger import Ledger, LedgerError
+from .world import World, WorldError
 
 PROTOCOL = "2025-06-18"
 
@@ -40,6 +43,18 @@ TOOLS = [
         "name": "add_coaching_item",
         "description": "Add one line under 'For the coaching thread' in soul.md, for something worth discussing in the coaching thread. Mention it to Kristian at a natural pause.",
         "inputSchema": _schema({"item": {**S, "description": "One line, plain text."}}, ["item"]),
+    },
+    {
+        "name": "edit_soul",
+        "description": (
+            "Replace one exact passage in soul.md. soul.md is yours: the change is written at once (with a backup), "
+            "no approval needed. `old` must occur exactly once. Keep to what the core says belongs in soul.md."
+        ),
+        "inputSchema": _schema({
+            "old": {**S, "description": "The exact text to replace."},
+            "new": {**S, "description": "The replacement text."},
+            "reason": {**S, "description": "One line on why, kept in the journal."},
+        }, ["old", "new", "reason"]),
     },
     {
         "name": "propose_edit",
@@ -74,11 +89,113 @@ TOOLS = [
 ]
 
 
+N = {"type": "number"}
+I = {"type": "integer"}
+
+GAME_TOOLS = [
+    {
+        "name": "go_to",
+        "description": (
+            "Walk to one of the named places in the vault when your reply ends. Use it whenever you say you will "
+            "go somewhere, so what you say and where you go agree. You stay there until the game next asks you "
+            "(every few minutes), when you can keep it or move on; give minutes only for a firm promise."
+        ),
+        "inputSchema": _schema({
+            "place": {**S, "description": "A place id, e.g. 'pool', 'maproom', 'desk'. look_at_map lists them."},
+            "why": {**S, "description": "Why you are going, in a few words; you will be reminded of it."},
+            "minutes": {**N, "description": "Optional firm promise: stay at least this long (at most 120)."},
+        }, ["place", "why"]),
+    },
+    {
+        "name": "stay_here",
+        "description": "Stay where you are until the game next asks you (or for the minutes you give). Use it whenever you say you will stay.",
+        "inputSchema": _schema({
+            "why": {**S, "description": "Why you are staying, in a few words; you will be reminded of it."},
+            "minutes": {**N, "description": "Optional firm promise: stay at least this long (at most 120)."},
+        }, ["why"]),
+    },
+    {
+        "name": "walk_with_kristian",
+        "description": "Follow Kristian as he walks about the vault, a step or two behind, until the game next asks you, the minutes are up, or you call wander.",
+        "inputSchema": _schema({
+            "why": {**S, "description": "Why, in a few words."},
+            "minutes": {**N, "description": "Optional firm promise: walk with him at least this long (at most 120)."},
+        }, ["why"]),
+    },
+    {
+        "name": "wander",
+        "description": "Drop any promise to stay or follow; go back to moving about the vault on your own.",
+        "inputSchema": _schema({}, []),
+    },
+    {
+        "name": "look_at_map",
+        "description": "The vault's map as text with x,y coordinates (x across, y down), its key, the named places and what you can place. Give a room id to see just that room.",
+        "inputSchema": _schema({"room": {**S, "description": "Optional room id, e.g. 'hearth', 'scriptorium'."}}, []),
+    },
+    {
+        "name": "place_furniture",
+        "description": (
+            "Put a piece of furniture on a floor tile, or swap one for another. The vault is yours to arrange. "
+            "The change is checked against the map rules (every room reachable, doors open, braziers against a wall) "
+            "and refused with the reason if it breaks one. Walls, doors, shelves and your desk cannot be moved."
+        ),
+        "inputSchema": _schema({
+            "item": {**S, "description": "One of: candle, brazier, papers, mat, pool, scribe_desk, map_table, graph_node, graph_edge."},
+            "x": I, "y": I,
+        }, ["item", "x", "y"]),
+    },
+    {
+        "name": "clear_furniture",
+        "description": "Remove a movable piece of furniture, leaving bare floor.",
+        "inputSchema": _schema({"x": I, "y": I}, ["x", "y"]),
+    },
+    {
+        "name": "name_place",
+        "description": "Name a floor tile as a place you can go (go_to and the game's own tick will offer it). Reusing one of your ids moves it.",
+        "inputSchema": _schema({
+            "id": {**S, "description": "Short id: letters, digits, - or _."},
+            "name": {**S, "description": "Where it is, as a phrase, e.g. 'by the new reading candle'."},
+            "x": I, "y": I,
+        }, ["id", "name", "x", "y"]),
+    },
+    {
+        "name": "forget_place",
+        "description": "Remove a place you named earlier (built-in places stay).",
+        "inputSchema": _schema({"id": S}, ["id"]),
+    },
+]
+GAME_NAMES = {t["name"] for t in GAME_TOOLS}
+
+
+def call_game(world: World, name: str, args: dict) -> str:
+    if name == "go_to":
+        return world.set_intent("go", args.get("place", ""), args.get("why", ""), args.get("minutes") or 0)
+    if name == "stay_here":
+        return world.set_intent("stay", why=args.get("why", ""), minutes=args.get("minutes") or 0)
+    if name == "walk_with_kristian":
+        return world.set_intent("follow", why=args.get("why", ""), minutes=args.get("minutes") or 0)
+    if name == "wander":
+        return world.set_intent("free")
+    if name == "look_at_map":
+        return world.map_text(args.get("room", ""))
+    if name == "place_furniture":
+        return world.place(args.get("item", ""), args.get("x"), args.get("y")) + " Kristian sees it when your reply ends."
+    if name == "clear_furniture":
+        return world.clear(args.get("x"), args.get("y")) + " Kristian sees it when your reply ends."
+    if name == "name_place":
+        return world.name_place(args.get("id", ""), args.get("name", ""), args.get("x"), args.get("y"))
+    if name == "forget_place":
+        return world.forget_place(args.get("id", ""))
+    raise WorldError(f"unknown tool {name}")
+
+
 def call(ledger: Ledger, name: str, args: dict) -> str:
     if name == "append_interaction_log":
         r = ledger.append_log(args.get("theme", ""), args.get("entry", ""), args.get("theme_link", ""))
     elif name == "add_coaching_item":
         r = ledger.add_coaching(args.get("item", ""))
+    elif name == "edit_soul":
+        r = ledger.edit_soul(args.get("old", ""), args.get("new", ""), args.get("reason", ""))
     elif name == "propose_edit":
         r = ledger.propose_edit(args.get("path", ""), args.get("old", ""), args.get("new", ""), args.get("reason", ""))
     elif name == "propose_note":
@@ -91,7 +208,7 @@ def call(ledger: Ledger, name: str, args: dict) -> str:
     return r.message
 
 
-def handle(ledger: Ledger, msg: dict) -> dict | None:
+def handle(ledger: Ledger, msg: dict, world: World | None = None) -> dict | None:
     method, mid = msg.get("method"), msg.get("id")
     if mid is None:
         return None  # a notification
@@ -100,13 +217,21 @@ def handle(ledger: Ledger, msg: dict) -> dict | None:
         result = {"protocolVersion": version, "capabilities": {"tools": {}},
                   "serverInfo": {"name": "vault", "version": "1.0"}}
     elif method == "tools/list":
-        result = {"tools": TOOLS}
+        result = {"tools": GAME_TOOLS + (TOOLS if ledger.mode != "off" else [])}
     elif method == "tools/call":
         p = msg.get("params") or {}
         try:
-            text, err = call(ledger, p.get("name", ""), p.get("arguments") or {}), False
+            name, args = p.get("name", ""), p.get("arguments") or {}
+            if name in GAME_NAMES:
+                text, err = call_game(world or World(ledger.cfg.state_dir), name, args), False
+            else:
+                text, err = call(ledger, name, args), False
+        except WorldError as e:
+            text, err = f"Not done: {e}", True
         except LedgerError as e:
             text, err = f"Not written: {e}", True
+        except (TypeError, ValueError) as e:
+            text, err = f"Not done: bad arguments ({e})", True
         except Exception as e:  # keep the server alive whatever happens
             text, err = f"Not written: unexpected error ({type(e).__name__}: {e})", True
         result = {"content": [{"type": "text", "text": text}], "isError": err}
@@ -118,7 +243,8 @@ def handle(ledger: Ledger, msg: dict) -> dict | None:
 
 
 def main() -> None:
-    ledger = Ledger(load_config())
+    cfg = load_config()
+    ledger, world = Ledger(cfg), World(cfg.state_dir)
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -127,7 +253,7 @@ def main() -> None:
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
-        reply = handle(ledger, msg)
+        reply = handle(ledger, msg, world)
         if reply is not None:
             sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
             sys.stdout.flush()

@@ -22,7 +22,7 @@ export async function talk(text, where, handlers) {
       if (!chunk.startsWith("data: ")) continue;
       const ev = JSON.parse(chunk.slice(6));
       if (ev.type === "done") return;
-      handlers[ev.type]?.(ev.text);
+      handlers[ev.type]?.("text" in ev ? ev.text : ev);
     }
   }
 }

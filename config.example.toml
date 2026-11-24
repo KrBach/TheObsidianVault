@@ -37,10 +37,14 @@ tools = ["Read", "Glob", "Grep"]
 [writes]
 # How Tally may write to the vault (Claude Code brain only):
 #   "off"     nothing is written
-#   "review"  every change waits for your approval in the game (the ledger panel)
-#   "direct"  interaction-log and coaching lines are written at once;
-#             note edits and new notes still wait for approval
+#   "review"  note edits and new notes wait for your approval in the game (the ledger panel);
+#             soul.md changes go in at once unless soul_direct = false
+#   "direct"  the same, and soul.md changes go in at once whatever soul_direct says
 mode = "review"
+
+# soul.md is Tally's own: its log lines, coaching items and edits go in at once, with a backup.
+# false = those wait for your review too.
+soul_direct = true
 
 # Theme folders where Tally may propose note edits and new notes.
 # bootstrap.md, archive/, templates/ and hidden folders are never written.

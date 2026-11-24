@@ -55,6 +55,8 @@ Set `writes.mode` in `config.toml`:
 
 Rules that always hold: only `.md` files inside the vault; never `bootstrap.md`, `archive/`, `templates/` or hidden folders such as `.obsidian/`; note changes only in the folders listed in `writes.folders`. An edit is applied only if the note has not changed since Tally proposed it. Every write keeps a backup of the old file in `.vault-state/backups/` and a line in `.vault-state/journal.jsonl`, so it can be undone by hand. `.vault-state/` is git-ignored. The API brain cannot write.
 
+soul.md is Tally's own: interaction-log lines, coaching items and `edit_soul` changes are written at once (with a backup) in both review and direct mode. Set `soul_direct = false` under `[writes]` to review those too. Note edits and new notes in the theme folders always wait for you.
+
 Tests (against a made-up vault in a temp folder): `python3 -m unittest discover -s tests`.
 
 ## Controls
@@ -68,6 +70,7 @@ Tests (against a made-up vault in a temp folder): `python3 -m unittest discover 
 | `v` | switch between the isometric and the ASCII view |
 | mouse wheel | zoom (isometric view) |
 | `n` | start a new conversation |
+| the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
 The conversation lives in the server, so reloading the page keeps it. Restart the server or press `n` for a fresh one.
 
@@ -89,6 +92,12 @@ Put images under `web/` (for example `web/sprites/` and `web/backdrops/`); paths
 Tally doesn't stay at the desk: they walk between the posts listed in `tally_posts` in [world/vault.json](world/vault.json) (the desk, the Library, the Scriptorium, the Map Room), linger at each, and stay put while you are close or walking up to talk.
 
 Every few minutes (`tally.tick_minutes`, default 6) the game also asks Tally whether they want to go somewhere or say something. The server tells Tally their coordinates, the room, what is near them, where you are and the last thing you said, and lists the named places in `spots` in [world/vault.json](world/vault.json) (the pool, the brazier, the map table, the Outbox and so on). Tally answers with a place or "stay" and an optional short line, which shows in the log, then walks there, even past you. Each tick is a separate small call ([obsidian_vault/tick.py](obsidian_vault/tick.py)) with no tools and no history, using a short sketch of Tally ([context/tally-tick.md](context/tally-tick.md)) instead of the whole core: about 4,000 tokens on Haiku (`tally.tick_model`), under a tenth of a cent. Ticks skip while you talk, while the tab is hidden, and after 30 minutes without input. Set `tick_minutes = 0` to turn them off.
+
+Tally always knows where they are and why. What they say and where they go are tied together by game tools in the conversation: `go_to` (a place, and why), `stay_here`, `walk_with_kristian` (Tally follows a step or two behind you) and `wander`. A choice like "I'll stay here a bit" holds until the next tick, which reminds Tally where they are and why and lets them keep it or change their mind; only a promise with minutes holds past a tick. Without ticks, a choice lapses after 20 minutes and Tally goes back to their round.
+
+## Tally arranges the vault
+
+The vault is Tally's to arrange. In conversation Tally can look at the map with coordinates (`look_at_map`), place or clear furniture (`place_furniture`, `clear_furniture`: candles, braziers, papers, pools, writing desks, map tables, graph nodes) and name new places to go (`name_place`). Every change goes through the same map check as the repo, so nothing can block a door or cut a room off; walls, doors, shelves and the desk are fixed. Tally's changes are kept in `.vault-state/world.json` (git-ignored, so a pull never overwrites them) and laid over `world/vault.json`; `.vault-state/world-journal.jsonl` lists every change. Delete `world.json` to put the vault back as built. New rooms are still built by hand in the repo for now.
 
 The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. Run it before you commit a map change.
 
