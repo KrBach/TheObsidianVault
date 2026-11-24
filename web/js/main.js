@@ -110,7 +110,7 @@ function describe(x, y) {
   return t.def.desc ? `${t.def.name}. ${t.def.desc}` : t.def.name;
 }
 
-// Close enough to talk: next to Tally, or across the desk from her.
+// Close enough to talk: next to Tally, or across the desk.
 const TALK_RANGE = 2;
 function inTalkRange(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= TALK_RANGE;

@@ -30,7 +30,7 @@ It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so
 
 Set `brain.kind` in `config.toml`:
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally gets only read-only tools (`Read`, `Glob`, `Grep`) and runs in the vault folder, so she can look at notes when you ask but cannot change anything. If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally gets only read-only tools (`Read`, `Glob`, `Grep`) and runs in the vault folder, so Tally can look at notes when you ask but cannot change anything. If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
