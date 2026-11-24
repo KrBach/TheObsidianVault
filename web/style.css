@@ -41,6 +41,7 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .portrait { display: none; margin: 8px; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px; }
 #bottom.talking .portrait { display: flex; }
 .portrait .art { width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
+.portrait .art [hidden] { display: none !important; }
 .portrait .art canvas, .portrait .art img { display: block; image-rendering: pixelated; width: 100%; height: 100%; object-fit: cover; }
 .portrait .name { color: var(--frame); font-size: 12px; letter-spacing: 0.1em; }
 .portrait.speaking .art { opacity: 1; filter: none; box-shadow: 0 0 0 1px #000, 0 0 14px var(--frame); }
@@ -91,4 +92,11 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
   #side .panel { min-width: 200px; }
   .keys { display: none; }
   .portrait .art { width: 72px; height: 90px; }
+}
+
+/* Tally is thinking: the portrait frame breathes, whatever image is in it. */
+.portrait.thinking .art { animation: portrait-think 1.6s ease-in-out infinite; }
+@keyframes portrait-think {
+  0%, 100% { box-shadow: 0 0 0 1px #000, 0 0 6px var(--frame); }
+  50% { box-shadow: 0 0 0 1px #000, 0 0 18px var(--frame); }
 }

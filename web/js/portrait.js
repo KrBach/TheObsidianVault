@@ -34,6 +34,8 @@ export class Portrait {
     if (this.cfg.image) {
       const img = new Image();
       img.alt = def.name;
+      // if the image is missing or broken, the painted placeholder simply stays
+      img.onerror = () => console.warn(`portrait image not found: ${this.cfg.image}`);
       img.onload = () => {
         this.canvas.hidden = true;
         el.querySelector(".art").append(img);

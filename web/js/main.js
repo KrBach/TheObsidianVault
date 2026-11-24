@@ -235,7 +235,13 @@ function move(dx, dy) {
   state.player.x = nx;
   state.player.y = ny;
   const after = roomAt(nx, ny);
-  if (after && after !== before) log(`You enter ${after.name}.`);
+  if (after && after !== before) {
+    // Say it once per visit, not every time you step back and forth across a doorway.
+    const now = performance.now();
+    const seen = (state.announced ||= {});
+    if (!seen[after.name] || now - seen[after.name] > 30000) log(`You enter ${after.name}.`);
+    seen[after.name] = now;
+  }
   if (nx === state.world.exit[0] && ny === state.world.exit[1]) log("The way out. Close the tab to leave; Tally keeps the ledger.");
   if (t.id === "papers" || t.id === "mat") log(describe(nx, ny));
   updateSide();
