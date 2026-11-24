@@ -1,0 +1,29 @@
+# Copy this file to config.toml and edit it. config.toml is git-ignored.
+
+[tally]
+# Folder that holds Tally's shared core (bootstrap.md, soul.md).
+# This is read, never written. Your private notes stay out of the repo.
+core_dir = "~/path/to/obsidian/Private"
+
+# Core files, loaded in this order from core_dir.
+core_files = ["bootstrap.md", "soul.md"]
+
+# Context layer for this use case, layered on top of the core.
+# Lives in the repo because it describes the game, not Tally.
+context_file = "context/the-vault-game.md"
+
+[brain]
+# "claude-code": runs `claude -p` (uses your Claude Code login).
+# "api":         calls the Claude API with ANTHROPIC_API_KEY (pip install -r requirements.txt).
+# "auto":        claude-code if the `claude` command is found, else api.
+kind = "auto"
+
+# Leave empty to use your Claude Code default model.
+model = ""
+
+# Tools Tally may use in claude-code mode. Read-only: she can look at notes, never edit them.
+tools = ["Read", "Glob", "Grep"]
+
+[server]
+host = "127.0.0.1"
+port = 8765

@@ -1,0 +1,6 @@
+# Local config holds the path to your private vault. Never commit it.
+config.toml
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
