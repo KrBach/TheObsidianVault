@@ -17,7 +17,7 @@ Tally's identity is not defined in this repo. At startup the game reads the shar
 
 ## Run it
 
-Needs Python 3.11 or newer.
+Needs Python 3.9 or newer (the one that ships with macOS is fine). No packages are needed for the Claude Code brain.
 
 ```sh
 cp config.example.toml config.toml   # then set tally.core_dir to your vault folder

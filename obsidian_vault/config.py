@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
-import tomllib
+from . import minitoml
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,7 +33,7 @@ def load_config(path: Path | None = None) -> Config:
     data: dict = {}
     if path.exists():
         with open(path, "rb") as f:
-            data = tomllib.load(f)
+            data = minitoml.load(f)
 
     tally = data.get("tally", {})
     brain = data.get("brain", {})
