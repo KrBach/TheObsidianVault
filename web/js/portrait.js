@@ -57,7 +57,8 @@ export class Portrait {
     for (const [st, list] of Object.entries(videos)) {
       this.clips[st] = (Array.isArray(list) ? list : [list]).filter(Boolean).map((src) => {
         const clip = { el: document.createElement("video"), ready: false };
-        Object.assign(clip.el, { muted: true, loop: true, playsInline: true, preload: "auto", hidden: true });
+        Object.assign(clip.el, { muted: true, loop: true, playsInline: true, preload: "auto" });
+        clip.el.className = "clip"; // stacked over the still; fades in and out (see style.css)
         clip.el.setAttribute("muted", "");
         clip.el.oncanplay = () => { clip.ready = true; };
         clip.el.onerror = () => console.warn(`portrait video not found: ${src}`);
@@ -88,26 +89,30 @@ export class Portrait {
     this.state = state;
     this.stateSince = t;
     this.el.classList.toggle("thinking", state === "thinking");
+    // Crossfade: the new clip fades in over the old one (or over the still), then the old one stops.
     const next = this.pickClip();
-    if (this.current && this.current !== next) {
-      this.current.el.pause();
-      this.current.el.hidden = true;
-    }
+    const prev = this.current;
     this.current = next;
-    if (next) {
+    if (next && next !== prev) {
+      clearTimeout(next.stopTimer);
       next.el.currentTime = 0;
-      next.el.hidden = false;
       next.el.play().catch(() => {});
+      next.el.classList.add("on");
+      next.el.style.zIndex = String(++this.layer || (this.layer = 1));
+    }
+    if (prev && prev !== next) {
+      const fade = () => {
+        prev.el.classList.remove("on");
+        prev.stopTimer = setTimeout(() => { if (this.current !== prev) prev.el.pause(); }, 450);
+      };
+      // fading the old clip out only once the new one covers it avoids a flash of the still
+      if (next) setTimeout(fade, 350); else fade();
     }
   }
 
   draw(t) {
     const c = this.ctx;
-    if (this.current) {
-      this.canvas.hidden = true;
-      if (this.img) this.img.hidden = true;
-      return;
-    }
+    if (this.current) return; // a clip is showing over the still
     const fr = frameOf(this.cfg.states?.[this.state], t - this.stateSince);
     if (this.img) {
       this.img.hidden = !!fr;

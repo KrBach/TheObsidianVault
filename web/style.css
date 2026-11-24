@@ -40,8 +40,10 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 /* Portraits show only while talking to Tally. */
 .portrait { display: none; margin: 8px; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px; }
 #bottom.talking .portrait { display: flex; }
-.portrait .art { width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
+.portrait .art { position: relative; width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
 .portrait .art [hidden] { display: none !important; }
+.portrait .art video.clip { position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease; }
+.portrait .art video.clip.on { opacity: 1; }
 .portrait.pixelated .art img, .portrait.pixelated .art canvas { image-rendering: pixelated; }
 .portrait .art canvas, .portrait .art img, .portrait .art video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .portrait .name { color: var(--frame); font-size: 12px; letter-spacing: 0.1em; }
