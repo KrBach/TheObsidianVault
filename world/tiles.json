@@ -364,8 +364,8 @@
       "portrait": {
         "image": "portraits/tally.jpg",
         "videos": {
-          "thinking": [],
-          "speaking": []
+          "thinking": ["portraits/tally-think-1.mp4", "portraits/tally-think-2.mp4", "portraits/tally-think-3.mp4"],
+          "speaking": ["portraits/tally-talk-1.mp4", "portraits/tally-talk-2.mp4"]
         },
         "frame": "#5fe0d0",
         "states": {
