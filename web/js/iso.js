@@ -79,14 +79,24 @@ export class IsoRenderer {
   loadSprites() {
     const defs = [...Object.values(this.tiles), ...Object.values(this.creatures)];
     for (const d of defs) {
-      const src = d.iso?.sprite;
-      if (src && !this.images[src]) {
-        const img = new Image();
-        img.src = src;
-        this.images[src] = img;
+      for (const src of [d.iso?.sprite, ...(d.iso?.variants || [])]) {
+        if (src && !this.images[src]) {
+          const img = new Image();
+          img.src = src;
+          this.images[src] = img;
+        }
       }
     }
     for (const d of Object.values(this.creatures)) preload(d.iso?.states);
+  }
+
+  // One of the tile's `iso.variants` (or its sprite), picked by position so it never changes.
+  // Repeat a path in the list to make it more common.
+  variantFor(def, x, y) {
+    const list = def.iso?.variants;
+    if (!list?.length) return this.spriteFor(def);
+    const img = this.images[list[Math.floor(hash(x, y) * list.length) % list.length]];
+    return img && img.complete && img.naturalWidth ? img : this.spriteFor(def);
   }
 
   spriteFor(def) {
@@ -256,9 +266,11 @@ export class IsoRenderer {
     const c = this.ctx;
     // a floor sprite (64x32 diamond) replaces the drawn floor everywhere, glints included
     const glint = this.spriteFor(this.tiles.floor_glint || {});
-    const floor = (iso.shape === "glint" && glint) || this.spriteFor(this.tiles.floor || {});
+    const floor = (iso.shape === "glint" && glint) || this.variantFor(this.tiles.floor || {}, x, y);
     if (floor) {
-      this.drawSprite(floor, {}, sx, sy, [floor.naturalWidth / 2, floor.naturalHeight / 2], 1, light);
+      // a slight per-tile difference in brightness, so the floor never looks stamped
+      const k = 0.93 + 0.14 * hash(x * 3 + 1, y * 7 + 2);
+      this.drawSprite(floor, {}, sx, sy, [floor.naturalWidth / 2, floor.naturalHeight / 2], 1, light.map((v) => v * k));
       return;
     }
     const n = hash(x, y);
