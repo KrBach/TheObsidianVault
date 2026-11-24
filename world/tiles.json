@@ -124,6 +124,35 @@
         "hideWhenSprite": "desk"
       }
     },
+    "scribe_desk": {
+      "glyph": "╥",
+      "fg": "#b08a5a",
+      "bg": "#1a1220",
+      "solid": true,
+      "name": "slanted writing desk",
+      "desc": "A tilted desk with a fresh page pinned to it, an inkwell and a candle stub. Finished notes are written up here.",
+      "iso": {
+        "shape": "box",
+        "h": 18,
+        "f": 0.6,
+        "color": "#5a3c22",
+        "ledger": true
+      }
+    },
+    "map_table": {
+      "glyph": "▒",
+      "fg": "#d9c08a",
+      "bg": "#2a2014",
+      "solid": true,
+      "name": "the great map table",
+      "desc": "One map covers the whole table: the vault's index and every theme index, with the links between notes drawn in thin ink.",
+      "iso": {
+        "shape": "box",
+        "h": 12,
+        "f": 1,
+        "color": "#8a7650"
+      }
+    },
     "brazier": {
       "glyph": "☼",
       "fg": "#ff9a3c",

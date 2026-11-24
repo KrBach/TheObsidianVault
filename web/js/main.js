@@ -74,6 +74,7 @@ function labelShelves() {
   const seen = new Set();
   const themes = shelves.filter((s) => !["archive", "templates"].includes(s.name) && !/output/i.test(s.name));
   const archive = shelves.find((s) => s.name === "archive");
+  const outputs = shelves.find((s) => /output/i.test(s.name));
   let n = 0;
   for (let y = 0; y < map.length; y++) {
     for (let x = 0; x < map[y].length; x++) {
@@ -82,7 +83,10 @@ function labelShelves() {
       if (seen.has(`${x},${y}`)) continue;
       // flood along the row: shelves are horizontal runs
       let info;
-      if (ch === "S") {
+      if (ch === "S" && roomAt(x, y)?.id === "scriptorium") {
+        // the Scriptorium's shelves hold what has been written up
+        info = outputs ? { label: outputs.name, notes: outputs.notes, colour: "#8a6a3a" } : { label: "finished pages", notes: 0, colour: "#8a6a3a" };
+      } else if (ch === "S") {
         const theme = themes[n];
         info = theme
           ? { label: theme.name, notes: theme.notes, colour: SHELF_COLOURS[n % SHELF_COLOURS.length] }
@@ -162,9 +166,13 @@ const STEPS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // Shortest path (straight steps) from the player to any of the goal cells.
 function findPath(goals) {
+  return bfs([state.player.x, state.player.y], goals, walkable);
+}
+
+// Shortest path from `start` to any goal, stepping only on cells where passable(x, y).
+function bfs(start, goals, passable) {
   const key = (x, y) => `${x},${y}`;
   const goalSet = new Set(goals.map(([x, y]) => key(x, y)));
-  const start = [state.player.x, state.player.y];
   if (goalSet.has(key(...start))) return [];
   const prev = new Map([[key(...start), null]]);
   const queue = [start];
@@ -172,7 +180,7 @@ function findPath(goals) {
     const [x, y] = queue.shift();
     for (const [dx, dy] of STEPS4) {
       const nx = x + dx, ny = y + dy, k = key(nx, ny);
-      if (prev.has(k) || !walkable(nx, ny)) continue;
+      if (prev.has(k) || !passable(nx, ny)) continue;
       prev.set(k, [x, y]);
       if (goalSet.has(k)) {
         const path = [];
@@ -192,10 +200,11 @@ function walkTo(x, y) {
   const t = tileAt(x, y);
   if (!t || !t.def) return;
   const isTally = (x === state.tally.x && y === state.tally.y) || t.id?.startsWith("desk");
+  state.goingToTally = isTally; // Tally waits for you instead of wandering off
   let goals, onArrive = null;
   if (isTally) {
     goals = talkSpots();
-    onArrive = () => startTalking();
+    onArrive = () => { state.goingToTally = false; startTalking(); };
   } else if (t.def.solid) {
     goals = neighbours(x, y);
     if (t.id !== "wall") onArrive = () => log(describe(x, y));
@@ -219,6 +228,63 @@ function stepAlongPath() {
     f();
   }
 }
+
+// ---------- Tally wanders ----------
+// Tally walks between posts (world.tally_posts): the desk, the Library, the Scriptorium, the
+// Map Room. Tally lingers at each, and stays put while Kristian is close, walking up, or talking.
+
+const TALLY_STEP_MS = 380;
+const NOTICE_RANGE = 3;
+
+function tallyFree(x, y) {
+  const t = tileAt(x, y);
+  return !!(t && t.def && !t.def.solid) && !(x === state.player.x && y === state.player.y);
+}
+
+function tallyShouldStay() {
+  const p = state.player, t = state.tally;
+  const close = Math.max(Math.abs(p.x - t.x), Math.abs(p.y - t.y)) <= NOTICE_RANGE;
+  return state.busy || state.talking || close || (state.goingToTally && !!state.onArrive);
+}
+
+function tallyTick() {
+  const t = state.tally, posts = state.world.tally_posts || [];
+  if (!posts.length) return;
+  const now = performance.now();
+  if (tallyShouldStay()) {
+    // look up and wait a little after Kristian leaves, rather than rushing off
+    t.waitUntil = Math.max(t.waitUntil || 0, now + 8000);
+    return;
+  }
+  if (t.path?.length) {
+    const [nx, ny] = t.path[0];
+    if (!tallyFree(nx, ny)) { t.path = null; return; } // someone is in the way: re-plan next tick
+    t.path.shift();
+    const before = roomAt(t.x, t.y);
+    t.x = nx; t.y = ny;
+    const after = roomAt(nx, ny);
+    const mine = roomAt(state.player.x, state.player.y);
+    if (after !== before && mine && (before === mine || after === mine)) {
+      log(after === mine ? `Tally walks in.` : `Tally heads off toward ${roomOf(t.goal)?.name || "another room"}.`, "action");
+    }
+    if (!t.path.length) {
+      const [a, b] = t.goal.dwell || [20, 60];
+      t.waitUntil = now + (a + Math.random() * (b - a)) * 1000;
+      t.post = t.goal;
+    }
+    return;
+  }
+  if (now < (t.waitUntil || 0)) return;
+  const choices = posts.filter((p) => p !== t.post);
+  // the desk is home: come back to it more often than anywhere else
+  const goal = Math.random() < 0.4 && t.post !== posts[0] ? posts[0] : choices[Math.floor(Math.random() * choices.length)];
+  const path = bfs([t.x, t.y], [goal.at], tallyFree);
+  if (path === null) { t.waitUntil = now + 5000; return; }
+  t.goal = goal;
+  t.path = path;
+}
+
+const roomOf = (post) => post && state.world.rooms.find((r) => r.id === post.room);
 
 // ---------- actions ----------
 
@@ -249,7 +315,8 @@ function move(dx, dy) {
 
 function startTalking() {
   if (!inTalkRange(state.player, state.tally)) {
-    log("Tally is at the desk in the Hearth. Walk up to the desk first.");
+    const r = roomAt(state.tally.x, state.tally.y);
+    log(`Tally is in ${r ? r.name : "the vault"}. Walk up to Tally first.`);
     return;
   }
   if (!state.talking) log("Tally looks up from the ledger.", "action");
@@ -303,7 +370,10 @@ async function say(text) {
     }
   };
   const room = roomAt(state.player.x, state.player.y);
-  const where = `Kristian is standing in ${room ? room.name : "the vault"}, next to your desk.`;
+  const tallyRoom = roomAt(state.tally.x, state.tally.y);
+  const atDesk = state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1];
+  const where = `Kristian is standing in ${room ? room.name : "the vault"}, next to you. ` +
+    `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}.`;
   try {
     await talk(text, where, {
       delta: (t) => { setTallyState("speaking"); body.textContent += t; logEl.scrollTop = logEl.scrollHeight; },
@@ -357,6 +427,7 @@ window.addEventListener("keydown", (e) => {
   if (d) {
     e.preventDefault();
     state.path = [];
+    state.onArrive = null;
     move(...d);
   }
 });
@@ -424,6 +495,9 @@ async function boot() {
     player: new Portrait($("portrait-player"), w.creatures.player),
   };
   setInterval(stepAlongPath, 120);
+  state.tally.post = (w.tally_posts || [])[0];
+  state.tally.waitUntil = performance.now() + 30000; // at the desk when you arrive
+  setInterval(tallyTick, TALLY_STEP_MS);
   window.vault = { state, renderers, portraits }; // handy from the browser console
 
   const st = w.status;
