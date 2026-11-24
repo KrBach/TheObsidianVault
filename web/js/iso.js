@@ -29,7 +29,7 @@ const AMBIENT = [0.2, 0.17, 0.27];
 // Sprites are painted with their own shading, so they take the scene's light a little brighter.
 const SPRITE_GAIN = 1.6;
 // Flat things are drawn with the floor; only things that stand up are depth-sorted.
-const FLAT = new Set(["floor", "glint", "door", "edge", "mat", "papers", "pool"]);
+const FLAT = new Set(["floor", "glint", "inlay", "door", "edge", "mat", "papers", "pool"]);
 
 // ---------- colour helpers ----------
 
@@ -262,11 +262,13 @@ export class IsoRenderer {
 
   // ---------- tiles ----------
 
-  drawFloor(x, y, sx, sy, iso, light) {
+  drawFloor(x, y, sx, sy, iso, light, id = "") {
     const c = this.ctx;
-    // a floor sprite (64x32 diamond) replaces the drawn floor everywhere, glints included
+    // a floor sprite (64x32 diamond) replaces the drawn floor everywhere, glints included;
+    // an inlay (shape "inlay") is a whole floor tile of its own, like the Map Room's compass rose
     const glint = this.spriteFor(this.tiles.floor_glint || {});
-    const floor = (iso.shape === "glint" && glint) || this.variantFor(this.tiles.floor || {}, x, y);
+    const inlay = iso.shape === "inlay" && this.spriteFor(this.tiles[id] || {});
+    const floor = inlay || (iso.shape === "glint" && glint) || this.variantFor(this.tiles.floor || {}, x, y);
     if (floor) {
       // a slight per-tile difference in brightness, so the floor never looks stamped
       const k = 0.93 + 0.14 * hash(x * 3 + 1, y * 7 + 2);
@@ -604,8 +606,8 @@ export class IsoRenderer {
         const iso = this.isoOf(id);
         if (iso.shape === "block" || this.paintedOver(x, y)) continue;
         const [sx, sy] = IsoRenderer.toScreen(x, y);
-        this.drawFloor(x, y, sx, sy, iso, light[y][x]);
-        if (iso.shape !== "floor" && FLAT.has(iso.shape)) this.drawTile(x, y, map[y][x], id, t, light[y][x], false);
+        this.drawFloor(x, y, sx, sy, iso, light[y][x], id);
+        if (iso.shape !== "floor" && iso.shape !== "inlay" && FLAT.has(iso.shape)) this.drawTile(x, y, map[y][x], id, t, light[y][x], false);
       }
     }
 

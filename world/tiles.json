@@ -300,6 +300,20 @@
           "strength": 0.35
         }
       }
+    },
+    "compass_rose": {
+      "glyph": "✦",
+      "fg": "#d8b070",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "compass rose",
+      "desc": "A brass compass rose set into the glass floor before the map table, north toward the Scriptorium. Tally asked for it.",
+      "iso": {
+        "sprite": "sprites/compass_rose.png",
+        "shape": "inlay",
+        "floor": "#1d1628",
+        "color": "#b08646"
+      }
     }
   },
   "creatures": {
