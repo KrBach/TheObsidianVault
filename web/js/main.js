@@ -424,7 +424,7 @@ async function boot() {
     player: new Portrait($("portrait-player"), w.creatures.player),
   };
   setInterval(stepAlongPath, 120);
-  window.vault = { state, renderers }; // handy from the browser console
+  window.vault = { state, renderers, portraits }; // handy from the browser console
 
   const st = w.status;
   const statusEl = $("status");

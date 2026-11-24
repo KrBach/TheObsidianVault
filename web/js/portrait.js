@@ -4,8 +4,8 @@
 //   "portrait": { "image": "portraits/tally.png", "frame": "#5fe0d0" }
 // When `image` is set and loads, it is shown (any size; it is scaled to fit the frame, keeping
 // its proportions). Until then a painted placeholder bust is drawn on a canvas.
-// `portrait.video` (mp4 or webm) plays muted and looping while Tally thinks or speaks
-// (`video_states` changes when). `portrait.pixelated: true` keeps pixel art crisp.
+// `portrait.videos` maps states ("thinking", "speaking") to muted looping clips (mp4 or webm);
+// several clips for one state take turns. `portrait.video` is one clip for both states. `portrait.pixelated: true` keeps pixel art crisp.
 // `portrait.states` can add animations for states such as "thinking" (see anim.js); while one
 // is playing it is drawn on the canvas in place of the still image.
 
@@ -47,22 +47,34 @@ export class Portrait {
     }
     if (this.cfg.pixelated) el.classList.add("pixelated");
 
-    // Optional looping video (muted), played while Tally thinks or speaks; the still shows otherwise.
-    const videoStates = this.cfg.video_states || ["thinking", "speaking"];
-    if (this.cfg.video) {
-      const v = document.createElement("video");
-      Object.assign(v, { muted: true, loop: true, playsInline: true, preload: "auto", hidden: true });
-      v.setAttribute("muted", "");
-      v.oncanplay = () => { this.video = v; };
-      v.onerror = () => console.warn(`portrait video not found: ${this.cfg.video}`);
-      v.src = this.cfg.video;
-      el.querySelector(".art").append(v);
-      this.videoStates = videoStates;
+    // Optional looping videos (muted), per state; the still shows when none is playing.
+    //   "videos": { "thinking": ["portraits/think.mp4"], "speaking": ["portraits/talk-1.mp4", "portraits/talk-2.mp4"] }
+    // Several clips for one state take turns, one per reply. "video" alone plays for both states.
+    const videos = { ...(this.cfg.videos || {}) };
+    if (this.cfg.video) for (const st of this.cfg.video_states || ["thinking", "speaking"]) videos[st] ||= [this.cfg.video];
+    this.clips = {}; // state -> [{ el, ready }]
+    this.turn = {};
+    for (const [st, list] of Object.entries(videos)) {
+      this.clips[st] = (Array.isArray(list) ? list : [list]).filter(Boolean).map((src) => {
+        const clip = { el: document.createElement("video"), ready: false };
+        Object.assign(clip.el, { muted: true, loop: true, playsInline: true, preload: "auto", hidden: true });
+        clip.el.setAttribute("muted", "");
+        clip.el.oncanplay = () => { clip.ready = true; };
+        clip.el.onerror = () => console.warn(`portrait video not found: ${src}`);
+        clip.el.src = src;
+        el.querySelector(".art").append(clip.el);
+        return clip;
+      });
     }
+    this.current = null;
   }
 
-  videoWanted() {
-    return !!this.video && this.videoStates.includes(this.state);
+  // The clip for the current state, rotating to the next one each time the state starts.
+  pickClip() {
+    const list = (this.clips[this.state] || []).filter((c) => c.ready);
+    if (!list.length) return null;
+    const i = (this.turn[this.state] = ((this.turn[this.state] ?? -1) + 1) % list.length);
+    return list[i];
   }
 
   setSpeaking(on) {
@@ -76,20 +88,25 @@ export class Portrait {
     this.state = state;
     this.stateSince = t;
     this.el.classList.toggle("thinking", state === "thinking");
+    const next = this.pickClip();
+    if (this.current && this.current !== next) {
+      this.current.el.pause();
+      this.current.el.hidden = true;
+    }
+    this.current = next;
+    if (next) {
+      next.el.currentTime = 0;
+      next.el.hidden = false;
+      next.el.play().catch(() => {});
+    }
   }
 
   draw(t) {
     const c = this.ctx;
-    if (this.video) {
-      const on = this.videoWanted();
-      if (on && this.video.paused) this.video.play().catch(() => {});
-      if (!on && !this.video.paused) this.video.pause();
-      this.video.hidden = !on;
-      if (on) {
-        this.canvas.hidden = true;
-        if (this.img) this.img.hidden = true;
-        return;
-      }
+    if (this.current) {
+      this.canvas.hidden = true;
+      if (this.img) this.img.hidden = true;
+      return;
     }
     const fr = frameOf(this.cfg.states?.[this.state], t - this.stateSince);
     if (this.img) {
