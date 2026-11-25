@@ -82,6 +82,25 @@ class WorldTest(unittest.TestCase):
         with self.assertRaises(WorldError):
             self.w.set_intent("go", "the moon")
 
+    def test_tally_position_is_kept_across_sessions(self):
+        self.assertIsNone(self.w.tally())
+        self.w.save_tally({"x": 20, "y": 4, "pose": "lie", "evil": "x",
+                           "doing": {"kind": "stay", "why": "  resting\n by the pool ", "firm_until": 0},
+                           "plan": [{"at": [22, 3], "name": "by the chair", "why": "then read"}, {"at": "bad"}]})
+        again = World(self.w.state)  # a new game, same state folder
+        t = again.tally()
+        self.assertEqual((t["x"], t["y"], t["pose"]), (20, 4, "lie"))
+        self.assertEqual(t["doing"], {"kind": "stay", "why": "resting by the pool", "name": "", "firm_until": 0.0})
+        self.assertEqual([p["at"] for p in t["plan"]], [[22, 3]])
+        self.assertNotIn("evil", t)
+        self.w.save_tally({"x": 1, "y": 1, "doing": {"kind": "rule the world"}, "pose": "dance"})
+        self.assertEqual(self.w.tally()["doing"]["kind"], "round")
+        self.assertNotIn("pose", self.w.tally())
+        with self.assertRaises(WorldError):
+            self.w.save_tally({"x": 9999, "y": 1})
+        with self.assertRaises(WorldError):
+            self.w.save_tally({"x": "a", "y": 1})
+
     def test_map_text_has_coordinates(self):
         text = self.w.map_text("hall")
         self.assertIn(" 12  ", text)

@@ -617,6 +617,59 @@ async function tallyChooses() {
   t.plan = plan;
 }
 
+// ---------- Tally, kept across sessions ----------
+// The game saves where Tally is (cell, what they are doing and why, pose, the rest of a plan) to the
+// server every few seconds when it changes, and once more when the page closes. The next time the
+// game opens, Tally is where they were, still doing what they chose.
+
+function tallySnapshot() {
+  const t = state.tally, d = t.doing || {};
+  const firmLeft = (d.firmUntil || 0) - performance.now();
+  return {
+    x: t.x, y: t.y, pose: t.pose?.how || null,
+    doing: { kind: d.kind || "round", why: d.why || "", name: d.name || "",
+      firm_until: firmLeft > 0 ? Date.now() / 1000 + firmLeft / 1000 : 0 },
+    goal: d.kind === "go" && t.goal ? { at: t.goal.at, name: t.goal.name, room: t.goal.room } : null,
+    plan: (t.plan || []).map((p) => ({ at: p.at, name: p.name, room: p.room, why: p.why })),
+  };
+}
+
+let lastSaved = "";
+function saveTally(beacon = false) {
+  if (!state.world || !state.restored) return;
+  const snap = tallySnapshot();
+  const key = JSON.stringify({ ...snap, doing: { ...snap.doing, firm_until: Math.round(snap.doing.firm_until / 60) } });
+  if (key === lastSaved) return;
+  lastSaved = key;
+  const body = JSON.stringify(snap);
+  if (beacon && navigator.sendBeacon) navigator.sendBeacon("/api/tally", new Blob([body], { type: "application/json" }));
+  else fetch("/api/tally", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => { lastSaved = ""; });
+}
+
+// Put Tally back where the last session left them. Returns true if there was somewhere to go back to.
+function restoreTally(saved) {
+  const t = state.tally;
+  if (!saved || !tallyFree(saved.x, saved.y)) return false;
+  t.x = t.rx = saved.x; t.y = t.ry = saved.y;
+  const d = saved.doing || {};
+  const firmLeft = d.firm_until ? d.firm_until * 1000 - Date.now() : 0;
+  if (d.kind && d.kind !== "round" && d.kind !== "follow") { // walking with Kristian ends when he leaves
+    setDoing(d.kind, d.why, { name: d.name, firmUntil: firmLeft > 0 ? performance.now() + firmLeft : 0 });
+  } else {
+    setDoing("round", ticksOn() ? "you stayed where you were when the game last closed; you have not chosen anywhere new yet" : DEFAULT_ROUND);
+  }
+  if (d.kind === "go" && saved.goal?.at && (saved.goal.at[0] !== t.x || saved.goal.at[1] !== t.y)) {
+    const path = bfs([t.x, t.y], [saved.goal.at], tallyFree);
+    if (path) { t.goal = { ...saved.goal, dwell: [60, 120] }; t.path = path; }
+  } else if (saved.goal?.at) {
+    t.goal = { ...saved.goal, dwell: [60, 120] };
+  }
+  t.plan = saved.plan || [];
+  if (saved.pose && canPose(t.x, t.y, saved.pose)) { setPose(t, saved.pose); t.lastAuto = `${t.x},${t.y}`; }
+  else if (!saved.pose) t.declined = `${t.x},${t.y}`; // standing where a chair is, as they were
+  return true;
+}
+
 // The bell at the front of the Entrance Hall: Tally comes to you, wherever they are.
 function ringBell() {
   const p = state.player, t = state.tally;
@@ -1000,6 +1053,11 @@ async function boot() {
   state.tally.post = (w.tally_posts || [])[0];
   state.tally.waitUntil = performance.now() + 30000; // at the desk when you arrive
   setDoing("round", "the game opened with you at your desk; you have not chosen anywhere yet");
+  const back = restoreTally(w.tally_saved);
+  state.restored = true;
+  setInterval(saveTally, 5000);
+  window.addEventListener("pagehide", () => saveTally(true));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) saveTally(true); });
   setInterval(tallyTick, TALLY_STEP_MS);
   state.bootedAt = performance.now();
   canvas.addEventListener("pointerdown", touched);
@@ -1025,7 +1083,9 @@ async function boot() {
   $("menu-status").append(` · writing: ${state.writes}` + (Number(st.tick_minutes) > 0 ? ` · Tally chooses every ${st.tick_minutes} min` : ""));
 
   log("You push open the heavy glass door and step into the vault.");
-  log("Somewhere north, a pen scratches in a ledger.", "action");
+  const tallyRoom = roomAt(state.tally.x, state.tally.y);
+  if (!back || (state.tally.x === w.tally[0] && state.tally.y === w.tally[1])) log("Somewhere north, a pen scratches in a ledger.", "action");
+  else log(`Tally is where you left them: ${tallyNow()}${tallyRoom && !tallyNow().includes(tallyRoom.name) ? `, in ${tallyRoom.name}` : ""}.`, "action");
   const startRoom = roomAt(state.player.x, state.player.y);
   if (startRoom) {
     (state.announced ||= {})[startRoom.name] = performance.now();
