@@ -12,6 +12,7 @@ import re
 import threading
 
 from .config import REPO_ROOT
+from .moves import MoveLog
 
 SKETCH_FILE = REPO_ROOT / "context" / "tally-tick.md"
 NEAR = 3  # tiles around Tally that count as "near you"
@@ -46,7 +47,7 @@ def nearby(world: dict, x: int, y: int) -> list[str]:
     return seen
 
 
-def build_prompt(world: dict, payload: dict) -> str:
+def build_prompt(world: dict, payload: dict, memory: str = "") -> str:
     tx, ty = _xy(payload.get("tally"), tuple(world.get("tally", (0, 0))))
     px, py = _xy(payload.get("player"), tuple(world.get("spawn", (0, 0))))
     room, proom = _room(world, tx, ty), _room(world, px, py)
@@ -78,13 +79,18 @@ def build_prompt(world: dict, payload: dict) -> str:
         lines.append(f'The last thing he said to you: "{recent}"')
     if reply:
         lines.append(f'What you answered (whatever you said you did there is done): "{reply}"')
+    if memory:
+        lines.append("")
+        lines.append("Your own recent choices about where to be (oldest first):")
+        lines.append(memory)
     lines.append("")
     lines.append("Places you can go (id: where, room):")
     rooms = {r["id"]: r["name"] for r in world.get("rooms", [])}
     for s in spots:
         lines.append(f"- {s['id']}: {s['name']}, {rooms.get(s['room'], s['room'])}")
     lines.append("")
-    lines.append('Do you want to go somewhere, or stay ("stay" keeps what you are doing)? Answer with the JSON object only.')
+    lines.append('Do you want to go somewhere, or stay ("stay" keeps what you are doing)? If you want a little round '
+                 'after that, add up to two more places under "then", each with its own reason. Answer with the JSON object only.')
     return "\n".join(lines)
 
 
@@ -100,16 +106,26 @@ def parse(reply: str, world: dict) -> dict:
     go = str(data.get("go") or "stay").strip().lower()
     say = " ".join(str(data.get("say") or "").split())[:160]
     why = " ".join(str(data.get("why") or "").split())[:160]
-    spot = next((s for s in world.get("spots", []) if s["id"] == go), None)
+    spots = {s["id"]: s for s in world.get("spots", [])}
+    plan = []
+    then = data.get("then") if isinstance(data.get("then"), list) else []
+    for step in then[:2]:
+        if isinstance(step, dict) and str(step.get("go", "")).strip().lower() in spots:
+            sp = spots[str(step["go"]).strip().lower()]
+            plan.append({"go": sp["id"], "at": sp["at"], "room": sp.get("room", ""), "name": sp["name"],
+                         "why": " ".join(str(step.get("why") or "").split())[:160]})
+    spot = spots.get(go)
     if not spot:
-        return {"go": "stay", "at": None, "say": say, "why": why}
-    return {"go": spot["id"], "at": spot["at"], "room": spot.get("room", ""), "name": spot["name"], "say": say, "why": why}
+        return {"go": "stay", "at": None, "say": say, "why": why, "plan": plan}
+    return {"go": spot["id"], "at": spot["at"], "room": spot.get("room", ""), "name": spot["name"], "say": say,
+            "why": why, "plan": plan}
 
 
 class Ticker:
     def __init__(self, cfg, brain):
         self.cfg, self.brain = cfg, brain
         self.lock = threading.Lock()
+        self.moves = MoveLog(cfg.state_dir)
         try:
             self.sketch = SKETCH_FILE.read_text(encoding="utf-8")
         except OSError:
@@ -121,9 +137,17 @@ class Ticker:
         if (brain_lock is not None and brain_lock.locked()) or not self.lock.acquire(blocking=False):
             return {"go": "stay", "at": None, "say": "", "skipped": "busy"}
         try:
-            reply = self.brain.muse(self.sketch, build_prompt(world, payload), self.cfg.tick_model)
+            prompt = build_prompt(world, payload, self.moves.for_prompt(4))
+            reply = self.brain.muse(self.sketch, prompt, self.cfg.tick_model)
         except Exception as e:  # a failed tick just means Tally stays put
             return {"go": "stay", "at": None, "say": "", "error": f"{type(e).__name__}: {e}"[:300]}
         finally:
             self.lock.release()
-        return parse(reply, world)
+        res = parse(reply, world)
+        # Write the choice down in Tally's own words, so the conversation and the next tick remember it.
+        if res["go"] == "stay":
+            self.moves.add("tick", "stay", "", res.get("why", ""), res.get("say", ""), res.get("plan"))
+        else:
+            self.moves.add("tick", "go", res["name"], res.get("why", ""), res.get("say", ""), res.get("plan"),
+                           res.get("room", ""))
+        return res
