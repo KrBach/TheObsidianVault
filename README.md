@@ -11,6 +11,8 @@ A small isometric game (with an ASCII view as a fallback) about an Obsidian vaul
 ▓ ≡≡≡≡≡    ≡≡≡≡≡  ▓       @        ▓
 ```
 
+Want a setup like this for yourself? See **[docs/SETUP.md](docs/SETUP.md)**: the vault's core files, Claude Code, running the game, logging in, errands and GitHub access, with placeholder examples.
+
 ## Tally is the same Tally everywhere
 
 Tally's identity is not defined in this repo. At startup the game reads the shared core (`bootstrap.md` and `soul.md`) from your own vault, then adds a thin context layer for this game ([context/the-vault-game.md](context/the-vault-game.md)): where Tally is and how long replies should be. Nothing from the vault is copied into the repo. The game writes to the vault only through the ledger (below), and only after you approve, unless you choose otherwise.
