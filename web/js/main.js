@@ -5,6 +5,9 @@ import { talk, resetConversation } from "./talk.js";
 import { renderMarkdown } from "./markdown.js";
 import * as ledger from "./ledger.js";
 import * as board from "./board.js";
+import { login, logout } from "./login.js";
+
+window.vaultStarted = true; // the scripts loaded; the door may still be closed
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log"), form = $("talk"), input = $("say");
@@ -24,7 +27,11 @@ const state = {
   talking: false,
   busy: false,
   shelfAt: new Map(), // "x,y" -> shelf info
+  role: "kristian", // or "guest": Tally keeps Kristian's things closed
 };
+const isGuest = () => state.role === "guest";
+const who = () => (isGuest() ? "Guest" : "Kristian");
+const forKristian = (what) => log(`The ${what} is Kristian's. It stays closed for guests.`);
 
 // ---------- log ----------
 
@@ -636,7 +643,7 @@ function tallySnapshot() {
 
 let lastSaved = "";
 function saveTally(beacon = false) {
-  if (!state.world || !state.restored) return;
+  if (!state.world || !state.restored || isGuest()) return; // a guest's visit does not move Tally for Kristian
   const snap = tallySnapshot();
   const key = JSON.stringify({ ...snap, doing: { ...snap.doing, firm_until: Math.round(snap.doing.firm_until / 60) } });
   if (key === lastSaved) return;
@@ -680,7 +687,7 @@ function ringBell() {
   }
   const path = bfs([t.x, t.y], goals, tallyFree);
   if (path === null) return log("Nothing answers. Tally can't find a way to you.", "action");
-  setDoing("go", "Kristian rang the bell for you", { name: "near Kristian, who rang the bell" });
+  setDoing("go", `${isGuest() ? "a guest" : "Kristian"} rang the bell for you`, { name: `near ${isGuest() ? "the guest" : "Kristian"}, who rang the bell` });
   t.goal = { at: path.length ? path[path.length - 1] : [t.x, t.y], room: roomAt(p.x, p.y)?.id, name: "to the bell", dwell: [60, 120] };
   t.path = path;
   if (roomAt(t.x, t.y) !== roomAt(p.x, p.y)) log("Somewhere in the vault, Tally looks up and starts walking.", "action");
@@ -756,7 +763,7 @@ async function say(text) {
   portraits?.player.setSpeaking(false);
   portraits?.tally.setSpeaking(true);
   setTallyState("thinking");
-  logLine("Kristian", "you").textContent = text;
+  logLine(who(), "you").textContent = text;
   let body = logLine("Tally", "tally");
   body.classList.add("thinking");
   // Tool use shows as an action line. Keep the order true: action first if Tally has not
@@ -775,9 +782,12 @@ async function say(text) {
   const room = roomAt(state.player.x, state.player.y);
   const tallyRoom = roomAt(state.tally.x, state.tally.y);
   const atDesk = state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1];
-  const where = `Kristian is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
-    `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}, ` +
-    `at (${state.tally.x},${state.tally.y}).` + promiseText();
+  const youAre = `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}`;
+  const where = isGuest()
+    // a guest's Tally hears nothing of why Tally is where they are: those reasons can be Kristian's business
+    ? `A guest (not Kristian) is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ${youAre}.`
+    : `Kristian is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
+      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText();
   state.lastSaid = text;
   try {
     await talk(text, where, {
@@ -905,11 +915,15 @@ $("menu-close").addEventListener("click", closeMenu);
 $("m-view").addEventListener("click", () => setView(state.view === "iso" ? "ascii" : "iso"));
 $("m-tall").addEventListener("click", () => { closeMenu(); toggleTall(); });
 $("m-new").addEventListener("click", () => { closeMenu(); newConversation(); });
-$("m-board").addEventListener("click", () => { closeMenu(); board.open(); });
-$("m-ledger").addEventListener("click", () => {
-  closeMenu();
+$("m-board").addEventListener("click", () => { closeMenu(); openBoard(); });
+$("m-ledger").addEventListener("click", () => { closeMenu(); openLedger(); });
+$("m-logout").addEventListener("click", () => logout());
+
+function openBoard() { return isGuest() ? forKristian("notice board") : board.open(); }
+function openLedger() {
+  if (isGuest()) return forKristian("ledger");
   if (!ledger.openList()) log("Writing is off in config.toml, so the ledger stays shut.");
-});
+}
 
 function newConversation() {
   resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
@@ -950,11 +964,11 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "t" || e.key === "Enter") { e.preventDefault(); return startTalking(); }
   if (e.key === "Escape" || e.key === "m") { e.preventDefault(); return openMenu(); }
   if (e.key === "n") return newConversation();
-  if (e.key === "p") { if (!ledger.openList()) log("Writing is off in config.toml, so the ledger stays shut."); return; }
+  if (e.key === "p") return openLedger();
   if (e.key === "e") return toggleTall();
   if (e.key === "x") return restKey("sit");
   if (e.key === "z") return restKey("lie");
-  if (e.key === "b") return board.open();
+  if (e.key === "b") return openBoard();
   if (e.key === "v") return setView(state.view === "iso" ? "ascii" : "iso");
   const d = KEYS[e.key];
   if (d) {
@@ -986,8 +1000,17 @@ let setView = () => {};
 
 async function boot() {
   const res = await fetch("/api/world");
+  if (res.status === 401) return location.reload(); // logged out meanwhile
   state.world = await res.json();
   const w = state.world;
+  state.role = w.role || "kristian";
+  if (isGuest()) {
+    w.creatures.player = { ...w.creatures.player, name: "Guest", fg: "#b8c0cc",
+      iso: { ...w.creatures.player.iso, color: "#5a6878" }, portrait: { frame: "#8a94a4" } };
+    $("talk-prompt").textContent = "Guest>";
+    $("say").placeholder = "Say something to Tally (Esc to step away)";
+    for (const id of ["board-open", "m-board", "m-ledger"]) $(id).hidden = true;
+  }
   [state.player.x, state.player.y] = w.spawn;
   [state.tally.x, state.tally.y] = w.tally;
   labelShelves();
@@ -1079,7 +1102,7 @@ async function boot() {
 
   state.writes = st.writes || "off";
   ledger.initLedger(state.writes, log);
-  board.initBoard(log);
+  if (!isGuest()) board.initBoard(log);
   $("menu-status").append(` · writing: ${state.writes}` + (Number(st.tick_minutes) > 0 ? ` · Tally chooses every ${st.tick_minutes} min` : ""));
 
   log("You push open the heavy glass door and step into the vault.");
@@ -1129,7 +1152,14 @@ async function boot() {
   requestAnimationFrame(frame);
 }
 
-boot().catch((e) => {
+async function start() {
+  let who = { role: null, has_password: true };
+  try { who = await (await fetch("/api/login")).json(); } catch (_) { /* the server is down: boot says so */ }
+  if (!who.role) await login(who.has_password);
+  await boot();
+}
+
+start().catch((e) => {
   log(`The vault would not open: ${e.message}`, "err");
   window.vaultFatal?.(e.message);
 });

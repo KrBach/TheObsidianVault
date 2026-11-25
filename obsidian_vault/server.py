@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import json
 import webbrowser
+from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
+from .auth import COOKIE, SESSION_DAYS, Auth, AuthError
 from .board import Board, BoardError
-from .brains import Brain, make_brain
+from .brains import Brain, make_brain, make_guest_brain
 from .errands import Errands
 from .config import REPO_ROOT, Config, load_config
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
-from .persona import Persona, load_persona, vault_shelves
+from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
 from .tick import Ticker
 from .world import World, WorldError
 
@@ -31,19 +33,29 @@ class Game:
         self.moves = MoveLog(cfg.state_dir)
         self.ticker = Ticker(cfg, self.brain)
         self.layout = World(cfg.state_dir)
+        self.auth = Auth(cfg.state_dir)
+        self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
 
-    def world(self) -> dict:
+    def world(self, role: str = "kristian") -> dict:
         world = self.layout.load()  # the repo's map plus Tally's own changes
-        world["shelves"] = vault_shelves(self.cfg)
+        guest = role != "kristian"
+        world["shelves"] = guest_shelves(self.cfg) if guest else vault_shelves(self.cfg)
+        world["role"] = role
         world["tally_saved"] = self.layout.tally()  # where Tally was when the game last closed
         world["status"] = {
             "brain": self.brain.name,
             "core_loaded": self.persona.loaded,
             "core_missing": self.persona.missing,
-            "writes": self.cfg.writes_mode,
-            "tick_minutes": self.cfg.tick_minutes,
-            "errands": self.cfg.errands and self.cfg.writes_mode != "off",
+            "writes": "off" if guest else self.cfg.writes_mode,
+            "tick_minutes": 0 if guest else self.cfg.tick_minutes,
+            "errands": not guest and self.cfg.errands and self.cfg.writes_mode != "off",
         }
+        if guest:
+            world["status"]["brain"] = self.guest_brain.name
+            saved = world.get("tally_saved")
+            if saved:  # where Tally is, but not why: those reasons can be Kristian's business
+                saved["doing"] = {**saved.get("doing", {}), "why": ""}
+                saved["plan"] = [{**p, "why": ""} for p in saved.get("plan", [])]
         return world
 
 
@@ -85,7 +97,49 @@ def make_handler(game: Game):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
+        def _token(self) -> str | None:
+            c = SimpleCookie()
+            try:
+                c.load(self.headers.get("Cookie") or "")
+            except Exception:
+                return None
+            return c[COOKIE].value if COOKIE in c else None
+
+        def _role(self) -> str | None:
+            return game.auth.role(self._token())
+
+        def _login_json(self, data, token: str | None, status=HTTPStatus.OK):
+            body = json.dumps(data).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            age = SESSION_DAYS * 86400 if token else 0
+            self.send_header("Set-Cookie", f"{COOKIE}={token or ''}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}")
+            self.end_headers()
+            self.wfile.write(body)
+
+        # Guests may walk around and talk to Tally; Kristian's things stay his.
+        KRISTIAN_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally")
+
+        def _gate(self) -> str | None:
+            """The role for an /api/ call, or None after answering 401/403 for it."""
+            role = self._role()
+            if not role:
+                self._json({"error": "log in first"}, HTTPStatus.UNAUTHORIZED)
+                return None
+            if role != "kristian" and self.path.startswith(self.KRISTIAN_ONLY):
+                self._json({"error": "that is Kristian's"}, HTTPStatus.FORBIDDEN)
+                return None
+            return role
+
         def do_GET(self):
+            if self.path == "/api/login":
+                return self._json({"role": self._role(), "has_password": game.auth.has_password()})
+            if not self.path.startswith("/api/"):
+                return super().do_GET()
+            role = self._gate()
+            if not role:
+                return
             if self.path == "/api/board":
                 return self._json({"items": game.board.listing(game.errands.all())})
             if self.path.startswith("/api/board/file/"):
@@ -104,18 +158,39 @@ def make_handler(game: Game):
                 return self._json({"errands": [{k: r.get(k) for k in ("id", "kind", "title", "status")}
                                                for r in game.errands.all()[:20]]})
             if self.path == "/api/world":
-                return self._json(game.world())
+                return self._json(game.world(role))
             if self.path == "/api/pending":
                 return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
                                    "size": game.ledger.size_report(for_tally=False)})
-            return super().do_GET()
+            return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                return self._json({"error": "bad request"}, HTTPStatus.BAD_REQUEST)
+            if not isinstance(payload, dict):
+                return self._json({"error": "bad request"}, HTTPStatus.BAD_REQUEST)
+
+            if self.path == "/api/login":
+                try:
+                    token = game.auth.login(str(payload.get("role", "")), str(payload.get("password", "")),
+                                            new_password=bool(payload.get("new_password")))
+                except AuthError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.UNAUTHORIZED)
+                return self._login_json({"ok": True, "role": game.auth.role(token)}, token)
+            if self.path == "/api/logout":
+                game.auth.logout(self._token())
+                return self._login_json({"ok": True}, None)
+
+            role = self._gate()
+            if not role:
+                return
+            guest = role != "kristian"
 
             if self.path == "/api/reset":
-                game.brain.reset()
+                (game.guest_brain if guest else game.brain).reset()
                 return self._json({"ok": True})
 
             if self.path == "/api/tally":
@@ -126,7 +201,7 @@ def make_handler(game: Game):
                 return self._json({"ok": True})
 
             if self.path == "/api/tick":
-                if game.cfg.tick_minutes <= 0:
+                if game.cfg.tick_minutes <= 0 or guest:
                     return self._json({"go": "stay", "at": None, "say": "", "skipped": "off"})
                 result = game.ticker.tick(game.world(), payload)
                 if result.get("error"):
@@ -153,7 +228,9 @@ def make_handler(game: Game):
             text = str(payload.get("text", "")).strip()
             if not text:
                 return self._json({"error": "empty message"}, HTTPStatus.BAD_REQUEST)
-            where = str(payload.get("where", "")).strip()
+            where = str(payload.get("where", "")).strip()[:1000]
+            if guest:
+                return self._stream(game.guest_brain, f"<game_state>{where}</game_state>\n{text}" if where else text, guest=True)
             finished = game.errands.unreported()
             if finished:
                 news = "\n\n".join(game.errands.summary(r) for r in finished)
@@ -166,16 +243,19 @@ def make_handler(game: Game):
                         f"choices and your reasons.\n{memory}\n</your_recent_moves>\n{text}")
             if where:
                 text = f"<game_state>{where}</game_state>\n{text}"
+            return self._stream(game.brain, text)
 
+        def _stream(self, brain: Brain, text: str, guest: bool = False):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             layout_before = game.layout.version()
-            game.layout.take_intent()  # an old intent from a reply that never finished does not count
+            if not guest:
+                game.layout.take_intent()  # an old intent from a reply that never finished does not count
             try:
-                for event in game.brain.talk(text):
-                    if event.get("type") == "done":
+                for event in brain.talk(text):
+                    if event.get("type") == "done" and not guest:
                         # Tally's tools said where to be, or changed the room: tell the game before closing.
                         intent = game.layout.take_intent()
                         if intent:

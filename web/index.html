@@ -45,6 +45,7 @@
               <button type="button" class="menu-btn" id="m-new">New conversation with Tally (n)</button>
               <button type="button" class="menu-btn" id="m-board">Notice board (b)</button>
               <button type="button" class="menu-btn" id="m-ledger">Ledger (p)</button>
+              <button type="button" class="menu-btn" id="m-logout">Leave the vault (log out)</button>
               <div class="label">THE VAULT</div>
               <div id="menu-status" class="dim small"></div>
             </div>
@@ -84,11 +85,28 @@
         <figure class="portrait" id="portrait-player"><div class="art"></div><figcaption class="name"></figcaption></figure>
       </div>
       <form id="talk" hidden>
-        <span class="prompt">Kristian&gt;</span>
+        <span class="prompt" id="talk-prompt">Kristian&gt;</span>
         <input id="say" autocomplete="off" spellcheck="true" placeholder="Say something to Tally (Esc to step away)">
         <button type="button" id="enlarge" title="Enlarge the talk box for long answers (e when not talking)">⤢</button>
       </form>
     </section>
+  </div>
+  <div id="login" hidden>
+    <div class="login-box">
+      <div class="title">THE OBSIDIAN VAULT</div>
+      <div class="dim">Who comes to the door?</div>
+      <div class="login-cards">
+        <button type="button" class="login-card" id="login-kristian"><img src="portraits/kristian.jpg" alt=""><span>Kristian</span></button>
+        <button type="button" class="login-card" id="login-guest"><span class="guest-art">?</span><span>Guest</span></button>
+      </div>
+      <form id="login-form" hidden>
+        <label id="login-hint" class="dim" for="login-pw"></label>
+        <input id="login-pw" type="password" autocomplete="current-password" placeholder="password">
+        <input id="login-pw2" type="password" autocomplete="new-password" placeholder="the same again" hidden>
+        <button type="submit" class="menu-btn">Enter</button>
+      </form>
+      <div id="login-error" class="warn"></div>
+    </div>
   </div>
   <div id="fatal" hidden></div>
   <script>
@@ -106,7 +124,7 @@
       if (!window.vault) vaultFatal(String(e.reason && e.reason.message || e.reason));
     });
     setTimeout(function () {
-      if (!window.vault && document.getElementById("fatal").hidden) vaultFatal("the game's scripts did not run (a module may have failed to load)");
+      if (!window.vault && !window.vaultStarted && document.getElementById("fatal").hidden) vaultFatal("the game's scripts did not run (a module may have failed to load)");
     }, 6000);
   </script>
   <script type="module" src="js/main.js"></script>
