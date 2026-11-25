@@ -25,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import Config
+from .config import BROWSER_APPS, Config
 from .persona import load_core
 
 KINDS = ("research", "code", "session")
@@ -40,6 +40,47 @@ COST_TOOLS = [f"{prefix}{tool}"
                   (("mcp__Spriteforge__", "mcp__spriteforge__", "mcp__claude_ai_Spriteforge__", "mcp__claude_ai_SpriteForge__"), _SPRITEFORGE),
                   (("mcp__recraft__", "mcp__Recraft__", "mcp__claude_ai_Recraft__", "mcp__claude_ai_recraft__"), _RECRAFT))
               for prefix in prefixes for tool in tools]
+
+# The browser a session errand can have. A `claude -p` run the game starts is not inside the Claude
+# desktop app, so the app's built-in browser (mcp__Claude_Browser__*, or mcp__remote-devices__... from
+# the cloud) never reaches it. Two browsers do:
+#   safari  MCPSafari, a local MCP server (`mcp-safari`, in OWNER's ~/.claude.json) bridged to a Safari
+#           extension; its tools are mcp__mcp-safari__*. The default, since a Chrome admin policy can
+#           block the Claude in Chrome extension.
+#   chrome  Claude in Chrome: `claude --chrome` connects to the extension in OWNER's own Chrome; its
+#           tools are mcp__claude-in-chrome__*.
+SAFARI_SERVER = "mcp__mcp-safari"
+CHROME_SERVER = "mcp__claude-in-chrome"
+BROWSER_SERVERS = {"safari": SAFARI_SERVER, "chrome": CHROME_SERVER}
+# A report that starts with this marks the errand failed: the run found no browser and stopped.
+BROWSER_MISSING = "BROWSER MISSING:"
+
+_BUILT_IN = ("The Claude desktop app's built-in browser (Claude_Browser) cannot reach a run the game starts, so "
+             "where a skill or note says to use the built-in browser (or Claude in Chrome), use {name} instead; "
+             "sign-ins are {app}'s, not the app's. ")
+_STOP = ("stop at once: begin the report with \"" + BROWSER_MISSING + "\" and say what was missing ({what}). "
+         "Do not try a workaround, such as reading browser data off the disk.")
+
+BROWSER_RULES = {
+    "safari": ("The browser in this run is Safari through MCPSafari (the mcp__mcp-safari__* tools), in OWNER's own "
+               "Safari. " + _BUILT_IN.format(name="the mcp-safari tools", app="Safari")
+               + "If a status call reports the bridge as disconnected (or a port other than the one asked for), "
+               "wait a few seconds and try once more; it often connects on the second call. If the "
+               "mcp__mcp-safari__ tools are missing, or they still cannot reach Safari after that one retry, "
+               + _STOP.format(what="Safari closed, the extension not connected, a site not signed in") + "\n\n"
+               "Safari asks OWNER before the extension touches a site it has not been granted (Website access: "
+               "Ask), and nobody is there to answer, so a step on an ungranted site may wait or time out. Treat "
+               "that as a blocker: stop that step, name the site in the report so OWNER can grant it, and never "
+               "work around the prompt.\n\n"
+               "Krooster is a fallback source only, and OWNER is not logged in there in Safari. If a skill step "
+               "needs Krooster, skip that step and say in the report that you skipped it and why."),
+    "chrome": ("The browser in this run is Claude in Chrome (the mcp__claude-in-chrome__* tools), in OWNER's own "
+               "Chrome. " + _BUILT_IN.format(name="Claude in Chrome", app="Chrome")
+               + "If the mcp__claude-in-chrome__ tools are missing, or their first call cannot reach Chrome, "
+               + _STOP.format(what="Chrome closed, the extension not connected, a site not signed in")),
+    "off": ("This run has no browser. If the errand needs one, stop at once and begin the report with \""
+            + BROWSER_MISSING + "\"."),
+}
 
 ERRAND_RULES = """# Errand
 
@@ -141,6 +182,10 @@ class Errands:
         kind = op.get("errand_kind")
         if kind not in KINDS:
             raise ErrandError(f"unknown errand kind {kind!r}")
+        if kind == "session":
+            problem = self.browser_problem()
+            if problem:  # fail before anything runs, so the errand does not sit there with no browser
+                raise ErrandError(problem)
         rec = {"id": op["id"], "kind": kind, "title": op.get("title", ""), "brief": op.get("brief", ""),
                "spend_usd": float(op.get("spend_usd") or 0), "status": "running", "approved": _now(),
                "self_started": bool(op.get("self_started")),
@@ -170,6 +215,37 @@ class Errands:
             raise ErrandError("the vault folder is not set, so this errand has nowhere to run")
         return str(self.cfg.core_dir)
 
+    # ---------- the browser ----------
+
+    def browser(self) -> str:
+        """The browser session errands get: "safari", "chrome" or "off"."""
+        b = (self.cfg.errand_browser or "off").lower()
+        return b if b in BROWSER_RULES else "off"
+
+    def browser_app(self) -> str:
+        """The process that must be running for the browser, or "" when there is none to check."""
+        return self.cfg.errand_browser_app or BROWSER_APPS.get(self.browser(), "")
+
+    def _app_running(self, app: str) -> bool:
+        """Whether a process with exactly this name runs (pgrep; reads the process list, nothing else)."""
+        return subprocess.run(["pgrep", "-x", app], capture_output=True).returncode == 0
+
+    def browser_problem(self) -> str:
+        """What OWNER has to start before a session errand can have the browser, or "" if nothing."""
+        browser, app = self.browser(), self.browser_app()
+        if browser == "off" or not app:
+            return ""
+        try:
+            if self._app_running(app):
+                return ""
+        except OSError:  # no pgrep: cannot tell, so the run checks for itself (BROWSER_RULES)
+            return ""
+        how = {"safari": "the MCPSafari extension, with the extension turned on",
+               "chrome": "the Claude in Chrome extension signed in to OWNER's Claude account"}[browser]
+        tool = {"safari": "Safari through MCPSafari", "chrome": "Claude in Chrome"}[browser]
+        return self.cfg.fill(f"{app} is not open, and session errands use the browser through {tool}. "
+                             f"Open {app} with {how}, then approve the errand again.")
+
     def system_prompt(self, rec: dict) -> str:
         core, _, _ = load_core(self.cfg)
         if rec["spend_usd"] > 0:
@@ -179,6 +255,8 @@ class Errands:
             spend = ("Tools that spend OWNER's art credits are blocked. If the errand needs one, get a quote, "
                      "put it in the report and stop, so OWNER can approve the spend as a new errand.")
         rules = KIND_RULES[rec["kind"]].format(branch=rec.get("branch", ""), spend=spend)
+        if rec["kind"] == "session":
+            rules += "\n\n" + BROWSER_RULES[self.browser()]
         return (self.cfg.fill("# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n")
                 + f"{core}\n\n" + self.cfg.fill(f"{ERRAND_RULES}\n{rules}\n"))
 
@@ -204,7 +282,17 @@ class Errands:
                     "--disallowedTools", "Bash(git push --force:*),Bash(git push -f:*),Bash(git merge:*),Bash(git rebase:*)",
                     "--permission-mode", "acceptEdits", "--strict-mcp-config"]
         else:  # session: the owner's own setup
-            cmd += ["--allowedTools", ",".join(cfg.errand_session_tools), "--permission-mode", "acceptEdits"]
+            browser = self.browser()
+            server = BROWSER_SERVERS.get(browser)
+            # One browser per run: the other one's tools are left out, and none at all when it is off.
+            allowed = [t for t in cfg.errand_session_tools
+                       if t == server or not any(t == s or t.startswith(s + "__")
+                                                 for s in BROWSER_SERVERS.values())]
+            if server and server not in allowed:  # no prompt can be answered, so the browser must be allowed
+                allowed.append(server)
+            if browser == "chrome":
+                cmd += ["--chrome"]  # print mode does not connect to Claude in Chrome unless asked
+            cmd += ["--allowedTools", ",".join(allowed), "--permission-mode", "acceptEdits"]
             if rec["spend_usd"] <= 0:
                 cmd += ["--disallowedTools", ",".join(COST_TOOLS)]
             if cfg.work_dir and cfg.work_dir.is_dir():
@@ -240,6 +328,9 @@ class Errands:
             rec["turns"] = data.get("num_turns")
         except (ValueError, AttributeError):
             result = (out or "").strip()[-4000:]
+        if result.lstrip().startswith(BROWSER_MISSING):  # the run had no browser and stopped, as told
+            failed = True
+            rec["browser_missing"] = True
         if failed and not result:
             result = (err or "").strip()[-1500:] or f"claude exited with code {code}"
         if rec["kind"] == "code" and rec.get("worktree"):

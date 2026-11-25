@@ -39,7 +39,7 @@ Bigger work goes out as an errand: you write the brief with propose_errand, it w
 
 - research: reading the vaults and the web at length; writes nothing.
 - code: a change to this game, on its own branch, tested and pushed; OWNER reviews it as a pull request.
-- session: OWNER's full Claude Code setup (skills, connectors, browser, vault edits), for things like a regular data check with OWNER's own skills. Tools that spend credits stay blocked unless OWNER agreed a limit, which you pass as spend_usd.
+- session: OWNER's full Claude Code setup (skills, connectors, browser, vault edits), for things like a regular data check with OWNER's own skills. The browser there is Safari through MCPSafari (or Claude in Chrome, if OWNER set that), not the desktop app's built-in browser, so OWNER needs Safari open with the extension on; if it is closed, approving fails with a message saying so. Safari asks before the extension touches a new site, so a brief that needs a site OWNER has not granted will stall: say so when you write the brief. Krooster is skipped there, since OWNER is not logged in to it in Safari. Tools that spend credits stay blocked unless OWNER agreed a limit, which you pass as spend_usd.
 
 For anything large (several steps, code, money, or a choice OWNER cares about), hold a short meeting first: agree the goal, what done looks like, the limits and any cost, then write the brief and read it back in one line. OWNER may call a meeting too, for example at the map table. Small things stay in the conversation. An errand runs unattended, so the brief must stand on its own: say where to look, what to change or check, and what to report.
 

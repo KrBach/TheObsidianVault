@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from obsidian_vault.board import Board, BoardError  # noqa: E402
 from obsidian_vault.config import Config  # noqa: E402
-from obsidian_vault.errands import COST_TOOLS, Errands  # noqa: E402
+from obsidian_vault.errands import BROWSER_MISSING, CHROME_SERVER, COST_TOOLS, SAFARI_SERVER, Errands  # noqa: E402
 from obsidian_vault.ledger import Ledger, LedgerError  # noqa: E402
 
 FAKE_CLAUDE = """#!/usr/bin/env python3
@@ -145,6 +145,124 @@ class ErrandTest(_Vault):
         cmd = errands.command({**rec, "spend_usd": 2.5})
         self.assertNotIn("--disallowedTools", cmd)
         self.assertIn("$2.50", cmd[cmd.index("--append-system-prompt") + 1])
+
+    @staticmethod
+    def _allowed(cmd):
+        return cmd[cmd.index("--allowedTools") + 1].split(",")
+
+    def test_session_errand_gets_safari_by_default(self):
+        rec = {"id": "b1", "kind": "session", "title": "t", "brief": BRIEF, "spend_usd": 0}
+        cfg = self.cfg()
+        self.assertEqual(cfg.errand_browser, "safari")
+        cmd = Errands(cfg).command(rec)
+        self.assertNotIn("--chrome", cmd)  # Safari comes through its MCP server, not --chrome
+        self.assertIn(SAFARI_SERVER, self._allowed(cmd))
+        self.assertNotIn(CHROME_SERVER, self._allowed(cmd))
+        self.assertNotIn(SAFARI_SERVER, cmd[cmd.index("--disallowedTools") + 1])
+        prompt = cmd[cmd.index("--append-system-prompt") + 1]
+        self.assertIn("mcp__mcp-safari", prompt)
+        self.assertIn("built-in browser", prompt)
+        self.assertIn(BROWSER_MISSING, prompt)
+        self.assertIn("Website access", prompt)  # an ungranted site is a blocker, not something to get around
+        self.assertIn("Krooster", prompt)
+        self.assertIn("disconnected", prompt)  # retry the bridge once before giving up
+        # Left out of a hand-written session_tools, the browser is still allowed; Chrome's tools are not.
+        cfg.errand_session_tools = ["Read", "Skill", "mcp__claude-in-chrome__navigate"]
+        allowed = self._allowed(Errands(cfg).command(rec))
+        self.assertIn(SAFARI_SERVER, allowed)
+        self.assertNotIn("mcp__claude-in-chrome__navigate", allowed)
+
+    def test_session_errand_gets_chrome_when_asked(self):
+        rec = {"id": "b2", "kind": "session", "title": "t", "brief": BRIEF, "spend_usd": 0}
+        cfg = self.cfg()
+        cfg.errand_browser = "chrome"
+        cfg.errand_session_tools = ["Read", "Skill", SAFARI_SERVER]
+        cmd = Errands(cfg).command(rec)
+        self.assertIn("--chrome", cmd)  # print mode only connects to Claude in Chrome when asked
+        self.assertIn(CHROME_SERVER, self._allowed(cmd))
+        self.assertNotIn(SAFARI_SERVER, self._allowed(cmd))
+        prompt = cmd[cmd.index("--append-system-prompt") + 1]
+        self.assertIn("Claude in Chrome", prompt)
+        self.assertIn(BROWSER_MISSING, prompt)
+        self.assertNotIn("mcp__mcp-safari", prompt)
+
+    def test_session_errand_with_the_browser_off(self):
+        rec = {"id": "b3", "kind": "session", "title": "t", "brief": BRIEF, "spend_usd": 0}
+        cfg = self.cfg()
+        cfg.errand_browser = "off"
+        errands = Errands(cfg)
+        errands._app_running = lambda app: self.fail("no browser to check for")
+        self.assertEqual(errands.browser_problem(), "")
+        cmd = errands.command(rec)
+        self.assertNotIn("--chrome", cmd)
+        self.assertNotIn(SAFARI_SERVER, self._allowed(cmd))
+        self.assertNotIn(CHROME_SERVER, self._allowed(cmd))
+        self.assertIn("no browser", cmd[cmd.index("--append-system-prompt") + 1])
+        # Research errands never get a browser.
+        research = Errands(self.cfg()).command({**rec, "kind": "research"})
+        self.assertNotIn("--chrome", research)
+        self.assertNotIn(SAFARI_SERVER, research[research.index("--allowedTools") + 1])
+
+    def test_session_errand_fails_fast_when_safari_is_closed(self):
+        cfg = self.cfg()
+        errands = Errands(cfg)
+        asked = []
+        errands._app_running = lambda app: asked.append(app) or False
+        led = Ledger(cfg, on_errand=errands.start)
+        r = led.propose_errand("session", "Data check", BRIEF)
+        with self.assertRaises(LedgerError) as cm:
+            led.approve(r.id)
+        self.assertEqual(asked, ["Safari"])
+        self.assertIn("Safari is not open", str(cm.exception))
+        self.assertIn("MCPSafari", str(cm.exception))
+        self.assertFalse(self.args.exists())  # nothing ran
+        self.assertEqual(len(led.pending()), 1)  # still there to approve once Safari is open
+        errands._app_running = lambda app: True
+        led.approve(r.id)
+        rec = self.wait(errands, r.id)
+        self.assertEqual(rec["status"], "done")
+        self.assertNotIn("--chrome", json.loads(self.args.read_text())["argv"])
+
+    def test_session_errand_fails_fast_when_chrome_is_closed(self):
+        cfg = self.cfg()
+        cfg.errand_browser = "chrome"
+        errands = Errands(cfg)
+        asked = []
+        errands._app_running = lambda app: asked.append(app) or False
+        led = Ledger(cfg, on_errand=errands.start)
+        r = led.propose_errand("session", "Data check", BRIEF)
+        with self.assertRaises(LedgerError) as cm:
+            led.approve(r.id)
+        self.assertEqual(asked, ["Google Chrome"])
+        self.assertIn("Claude in Chrome extension", str(cm.exception))
+        self.assertFalse(self.args.exists())
+        self.assertEqual(len(led.pending()), 1)
+
+    def test_session_errand_that_finds_no_browser_is_failed(self):
+        self.claude.write_text(FAKE_CLAUDE.replace("Did the thing.", "BROWSER MISSING: no Safari tools."),
+                               encoding="utf-8")
+        cfg = self.cfg()
+        errands = Errands(cfg)
+        errands._app_running = lambda app: True
+        led = Ledger(cfg, on_errand=errands.start)
+        r = led.propose_errand("session", "Data check", BRIEF)
+        led.approve(r.id)
+        rec = self.wait(errands, r.id)
+        self.assertEqual(rec["status"], "failed")
+        self.assertTrue(rec["browser_missing"])
+
+    def test_browser_setting_is_read_from_config(self):
+        from obsidian_vault.config import load_config
+        for text, want in (("", "safari"), ('browser = "Chrome"', "chrome"), ('browser = "off"', "off"),
+                           ('browser = "firefox"', "off")):
+            path = self.base / "c.toml"
+            path.write_text(f"[errands]\n{text}\n", encoding="utf-8")
+            with self.subTest(text=text):
+                self.assertEqual(load_config(path).errand_browser, want)
+        example = load_config(ROOT / "config.example.toml")
+        self.assertEqual(example.errand_browser, "safari")
+        self.assertEqual(Errands(example).browser_app(), "Safari")
+        self.assertIn(SAFARI_SERVER, example.errand_session_tools)
 
     def test_code_errand_works_in_its_own_worktree_and_branch(self):
         repo = self.base / "repo"
