@@ -60,6 +60,7 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #log .action { color: var(--dim); font-style: italic; }
 #log .sys { color: var(--dim); }
 #log .err { color: var(--warn); }
+#log .picture img { display: block; width: 160px; max-width: 45%; height: auto; margin: 4px 0; border: 2px solid var(--dim); border-radius: 3px; }
 #log .thinking::after { content: "▌"; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 

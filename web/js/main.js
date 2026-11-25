@@ -179,6 +179,19 @@ function tallyNow() {
   return `standing in ${r ? r.name : "the vault"}`;
 }
 
+// A painted portrait, small, in the talk box (the cat's, when you look at it).
+function logPicture(p) {
+  if (!p?.image) return;
+  const div = document.createElement("div");
+  div.className = "picture";
+  const img = document.createElement("img");
+  img.src = p.image; img.alt = "";
+  if (p.frame) img.style.borderColor = p.frame;
+  img.addEventListener("load", () => { logEl.scrollTop = logEl.scrollHeight; });
+  div.append(img);
+  logEl.append(div);
+}
+
 function lookAtTally() {
   const t = state.tally;
   log(`Tally: the vault's archivist, in a plain dark coat, ink on their fingers, the ledger under one arm. ` +
@@ -928,7 +941,7 @@ function ctxOptions(x, y) {
   const resident = state.denizens?.at(x, y);
   if (resident === "cat") {
     const n = state.denizens.name;
-    const catOpts = [[`Look at ${n}`, () => state.denizens.lookAtCat()], [`Pet ${n}`, () => tendCat("pet")]];
+    const catOpts = [[`Look at ${n}`, () => { logPicture(state.world.creatures.cat?.portrait); state.denizens.lookAtCat(); }], [`Pet ${n}`, () => tendCat("pet")]];
     if (!isGuest()) catOpts.push([`Feed ${n}`, () => tendCat("feed")], [`Play with ${n} (the quill on a string)`, () => tendCat("play")]);
     catOpts.push([`Call ${n} ("pspsps")`, () => tendCat("call")]);
     return { head: n, opts: catOpts };
