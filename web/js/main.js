@@ -535,7 +535,8 @@ function catText() {
   const steps = Math.max(Math.abs(c.x - state.tally.x), Math.abs(c.y - state.tally.y));
   return ` ${d.name}, the vault cat, is ${d.doingWord()}${where ? `, ${where}` : ""}, in ${r ? r.name : "the vault"} at (${c.x},${c.y}),` +
     (steps <= 1 ? " right next to you (you can tend it with tend_cat)." : ` ${steps} steps from you.`) +
-    (d.hungry() ? " It has not been fed for over three hours." : "");
+    (d.hungry() ? " It has not been fed for over three hours." : "") +
+    (!isGuest() && d.fondnessText() ? ` ${d.fondnessText()}` : ""); // in words; the numbers stay in cat.py
 }
 
 // ---------- tending the cat ----------

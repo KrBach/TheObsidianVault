@@ -91,23 +91,50 @@ export function createDenizens(world, api) {
   const cat = { kind: "cat", x: start0[0], y: start0[1], rx: start0[0], ry: start0[1], path: [], pace: CAT_STEP_MS,
                 nextStep: 0, restUntil: now() + 15 * S, mood: "sleepy", sleeping: false, batting: false,
                 perch: null, lift: 0, onDesk: false, goal: null, follow: null, come: null, hunger: null,
-                purrUntil: 0, pounceUntil: 0, fedAt: clock() };
+                purrUntil: 0, pounceUntil: 0, fedAt: clock(),
+                // how much it likes each of them (0 to 1) and its odds of staying when they come over:
+                // both from the server (cat.py), which keeps them. They shift its odds, never decide them.
+                affinity: { player: 0, tally: 0 }, stayOdds: { player: 0, tally: 0 }, fondness: {}, fondnessText: "" };
+  const guest = world.role && world.role !== "owner"; // a guest is not the one it knows
   const imp = { kind: "imp", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, job: null, nextStep: 0, carrying: false };
   const out = [];  // errands the imp is out on
   const back = []; // reports waiting to be brought in
 
   // Who came into a room last: the curious cat goes to have a look at them.
-  const lastRoom = {};
+  // And who is walking towards it: someone it likes coming over makes it less likely to wander off.
+  const lastRoom = {}, lastDist = {}, nearingUntil = {};
   let lastArrived = "player";
   function watchArrivals() {
-    const ppl = people();
+    const ppl = people(), t = now();
     for (const who of ["player", "tally"]) {
       const p = ppl[who];
       if (!p) continue;
       const r = roomAt(p.x, p.y)?.id || "";
       if (lastRoom[who] !== undefined && lastRoom[who] !== r) lastArrived = who;
       lastRoom[who] = r;
+      const d = dist([cat.x, cat.y], [p.x, p.y]);
+      if (lastDist[who] !== undefined && d < lastDist[who] && d <= 8) nearingUntil[who] = t + 4 * S;
+      lastDist[who] = d;
     }
+  }
+  const nearing = (who) => now() < (nearingUntil[who] || 0);
+
+  // Affinity from the server, for whoever it is about (owner is the player here).
+  function setAffinity(src) {
+    if (!src?.affinity) return;
+    const a = src.affinity, s = src.stay_odds || {};
+    cat.affinity = { player: guest ? 0 : +a.owner || 0, tally: +a.tally || 0 };
+    cat.stayOdds = { player: guest ? 0 : +s.owner || 0, tally: +s.tally || 0 };
+    cat.fondness = src.fondness || {};
+    cat.fondnessText = src.fondness_text || "";
+  }
+  // The one it likes most of those in the vault, if it likes them at all above a passing acquaintance.
+  function favourite() {
+    const ppl = people();
+    const here = ["player", "tally"].filter((w) => ppl[w]);
+    if (!here.length) return null;
+    const who = here.reduce((a, b) => (cat.affinity[b] > cat.affinity[a] ? b : a));
+    return cat.affinity[who] > 0.2 ? who : null;
   }
 
   // ---------- the cat ----------
@@ -123,10 +150,16 @@ export function createDenizens(world, api) {
   function places(mood) {
     const list = [], ppl = people();
     const spread = (cells, w, extra) => { for (const at of cells) list.push({ at, w: w / cells.length, ...extra }); };
+    const fav = favourite(), fond = fav ? cat.affinity[fav] : 0;
     if (mood === "sleepy") {
       spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, WARM)), 5, { sleep: true });
       for (const [kind, w] of Object.entries(SOFT)) spread(cellsWhere((x, y) => id(x, y) === kind && canSettle(x, y)), w, { sleep: true });
+      // near whoever it likes most (a weight among the others, not a rule) ...
+      if (fav) spread(around(ppl[fav].x, ppl[fav].y), 5 * fond, { sleep: true });
+      // ... and, once it is really fond of Tally, now and then curled up by Tally's place at the desk
+      if (cat.affinity.tally >= 0.6 && world.tally) spread(around(world.tally[0], world.tally[1]), 3 * cat.affinity.tally, { sleep: true });
     } else if (mood === "curious") {
+      if (fav) spread(around(ppl[fav].x, ppl[fav].y), 5 * fond, { watch: fav, fav: true });
       spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, new Set(["pool"]), STEPS4)), 3, {});
       const who = ppl[lastArrived];
       if (who) spread(around(who.x, who.y), 4, { watch: lastArrived });
@@ -199,6 +232,9 @@ export function createDenizens(world, api) {
     cat.batting = !!g.bat;
     cat.restUntil = t + (g.desk ? 60 * S : g.hungry ? 120 * S : cat.sleeping ? span(90, 210)
       : cat.batting ? span(15, 35) : span(25, 60));
+    // went to look at someone it is very fond of: sometimes it tags along for a few steps
+    const fond = g.fav ? cat.affinity[g.watch] || 0 : 0;
+    if (fond >= 0.6 && Math.random() < 0.3 * fond) cat.follow = { who: g.watch, until: clock() + span(12, 30) };
   }
 
   function catStep(t, busy) {
@@ -237,6 +273,11 @@ export function createDenizens(world, api) {
     }
     if (t < cat.restUntil) return;
     if (cat.perch === "desk" && busy) { cat.restUntil = t + 30 * S; return; } // still busy: stay on the ledger
+    // someone it likes is coming over: it may wait for them (the odds are cat.py's, never certain)
+    const coming = ["player", "tally"].filter(nearing);
+    if (coming.length && cat.mood !== "hungry" && Math.random() < Math.max(...coming.map((w) => cat.stayOdds[w] || 0))) {
+      cat.restUntil = t + span(10, 25); return;
+    }
     const woke = cat.sleeping;
     leavePerch();
     cat.sleeping = false; cat.batting = false;
@@ -247,6 +288,7 @@ export function createDenizens(world, api) {
   // What the server said happened when someone tended the cat (cat.py), played out here.
   function apply(res, who) {
     if (!res?.ok) return;
+    setAffinity(res.cat?.affinity ? res.cat : res);
     const t = now();
     if (res.cat?.fed_at) cat.fedAt = res.cat.fed_at * 1000;
     switch (res.effect) {
@@ -302,6 +344,7 @@ export function createDenizens(world, api) {
 
   function restore(saved) {
     if (saved?.fed_at) cat.fedAt = saved.fed_at * 1000;
+    setAffinity(saved);
     if (!saved || saved.x == null || !canSettle(saved.x, saved.y)) return false;
     cat.x = cat.rx = saved.x; cat.y = cat.ry = saved.y;
     cat.mood = saved.mood || "sleepy";
@@ -399,8 +442,11 @@ export function createDenizens(world, api) {
     around: () => around(cat.x, cat.y, open),
     lookAtCat() {
       const where = whereWord();
-      log(`${def.desc || NAME} It is ${doingWord()}${where ? `, ${where}` : ""}. ${pick(CAT_LOOKS)}`);
+      const fond = !guest && cat.fondness.owner ? ` It ${cat.fondness.owner} you.` : "";
+      log(`${def.desc || NAME} It is ${doingWord()}${where ? `, ${where}` : ""}. ${pick(CAT_LOOKS)}${fond}`);
     },
+    // how it is with Tally and OWNER, in words, for Tally's game_state
+    fondnessText: () => cat.fondnessText,
     lookAtImp() {
       log(imp.carrying ? "A small soot-coloured imp with a rolled-up report under one arm. It is in a hurry." : "A small soot-coloured imp, the vault's errand runner. It is in a hurry.");
     },
