@@ -526,6 +526,15 @@ function applyIntent(ev) {
 }
 
 // Where Tally is, what they are doing and why: for the talk's game_state line and for ticks.
+// Where the cat is, for Tally's <game_state>: it lives in the browser, so the map plan cannot show it.
+function catText() {
+  const c = state.denizens?.cat;
+  if (!c) return "";
+  const r = roomAt(c.x, c.y);
+  const what = c.onDesk ? "sitting on the ledger on your desk" : c.sleeping ? "asleep" : c.path?.length ? "on the move" : "sitting";
+  return ` The vault cat is ${what} in ${r ? r.name : "the vault"}, at (${c.x},${c.y}).`;
+}
+
 function doingText() {
   const t = state.tally, d = t.doing || { kind: "round" };
   if (d.kind === "follow") return "walking with OWNER";
@@ -796,7 +805,7 @@ async function say(text) {
     // a guest's Tally hears nothing of why Tally is where they are: those reasons can be the owner's business
     ? `A guest (not OWNER) is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ${youAre}.`
     : `OWNER is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
-      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText();
+      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText() + catText();
   state.lastSaid = text;
   try {
     await talk(text, fill(where), {
