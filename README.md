@@ -30,7 +30,7 @@ It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so
 
 Set `brain.kind` in `config.toml`:
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set `tally.work_dir` to your Work vault to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`); press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
@@ -41,6 +41,7 @@ With the Claude Code brain, Tally gets a few vault tools from a small built-in M
 
 - **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (Europe/Copenhagen) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
 - **add_coaching_item**: one new line under "For the coaching thread" in `soul.md`.
+- **log_failure**: one new numbered entry in `agent-failure-log.md` (Tally's own file, written like `soul.md`), as the failure-log loop in `soul.md` asks.
 - **propose_edit**: replace one exact passage in a note in a theme folder.
 - **propose_note**: create a new note in a theme folder.
 - **vault_size**: how big `bootstrap.md` + `soul.md` are against the 35 KB guide.

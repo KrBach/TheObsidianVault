@@ -57,6 +57,22 @@ TOOLS = [
         }, ["old", "new", "reason"]),
     },
     {
+        "name": "log_failure",
+        "description": (
+            "Add a numbered entry to agent-failure-log.md, as the Failure log loop rule in soul.md asks: in the same "
+            "session as a correction from Kristian or a mistake you catch yourself. The file is yours, so it is "
+            "written at once, with a backup. Write 'Repeat of N' in `what` when it repeats an earlier entry."
+        ),
+        "inputSchema": _schema({
+            "date": {**S, "description": "When it happened, e.g. '2026-11-25'. Empty for today."},
+            "what": {**S, "description": "What went wrong, one or two sentences."},
+            "caught": {**S, "description": "How it was caught, e.g. 'Caught by Kristian.'"},
+            "fix": {**S, "description": "The fix or rule."},
+            "category": {**S, "description": "One of: source, ui-read, instruction, process, criterion, self-record, unchecked-claim."},
+            "operative": {**S, "description": "Where the fix now lives and changes what you do, or 'no (log only)'."},
+        }, ["what", "caught", "fix", "category", "operative"]),
+    },
+    {
         "name": "propose_edit",
         "description": (
             "Propose replacing one exact passage in an existing note in a theme folder. `old` must occur exactly "
@@ -196,6 +212,9 @@ def call(ledger: Ledger, name: str, args: dict) -> str:
         r = ledger.add_coaching(args.get("item", ""))
     elif name == "edit_soul":
         r = ledger.edit_soul(args.get("old", ""), args.get("new", ""), args.get("reason", ""))
+    elif name == "log_failure":
+        r = ledger.log_failure(args.get("date", ""), args.get("what", ""), args.get("caught", ""),
+                               args.get("fix", ""), args.get("category", ""), args.get("operative", ""))
     elif name == "propose_edit":
         r = ledger.propose_edit(args.get("path", ""), args.get("old", ""), args.get("new", ""), args.get("reason", ""))
     elif name == "propose_note":

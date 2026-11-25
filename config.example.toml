@@ -8,6 +8,10 @@ core_dir = "~/path/to/obsidian/Private"
 # Core files, loaded in this order from core_dir.
 core_files = ["bootstrap.md", "soul.md"]
 
+# The Work vault (optional). Tally may read it for work tasks (INDEX.md first), never write it,
+# and never copy work content into the Private vault. Leave empty to keep work out of the game.
+work_dir = ""
+
 # Context layer for this use case, layered on top of the core.
 # Lives in the repo because it describes the game, not Tally.
 context_file = "context/the-vault-game.md"
@@ -33,6 +37,10 @@ model = ""
 # Tools Tally may use in claude-code mode. Read-only: Tally can look at notes but not edit them.
 # Writing goes only through the vault tools below, never through Edit or Write.
 tools = ["Read", "Glob", "Grep"]
+
+# Let Tally look things up on the web (WebSearch, WebFetch), as the core's "look things up live"
+# rule asks. Read-only. false turns it off.
+web = true
 
 [writes]
 # How Tally may write to the vault (Claude Code brain only):

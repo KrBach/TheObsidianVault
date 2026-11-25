@@ -5,6 +5,7 @@ Tally never edits files freely. It asks for one of five changes:
   append_log      one new line at the end of soul.md's "Interaction log"
   add_coaching    one new item under soul.md's "For the coaching thread"
   edit_soul       replace one exact passage in soul.md
+  log_failure     one new numbered entry in agent-failure-log.md (Tally's own, like soul.md)
   propose_edit    replace one exact passage in an existing note
   propose_note    create a new note
 
@@ -45,6 +46,10 @@ except ImportError:  # pragma: no cover
 from .config import Config
 
 SOUL = "soul.md"
+FAILURE_LOG = "agent-failure-log.md"
+FAILURE_SECTION = "## Entries"
+FAILURE_CATEGORIES = ("source", "ui-read", "instruction", "process", "criterion", "self-record", "unchecked-claim")
+OWN_FILES = (SOUL, FAILURE_LOG)  # Tally's own files at the vault root
 LOG_SECTION = "## Interaction log"
 COACHING_SECTION = "## For the coaching thread"
 PROJECT_NAME = "The Obsidian Vault"
@@ -85,6 +90,22 @@ def _one_line(text: str, what: str) -> str:
     if len(text) > MAX_LINE:
         raise LedgerError(f"{what} is {len(text)} characters; keep it under {MAX_LINE}")
     return text
+
+
+def append_numbered(doc: str, section: str, body: str) -> str:
+    """Add `N. body` after the last numbered entry of `section`, N being one more than the highest."""
+    lines = doc.split("\n")
+    try:
+        start = next(i for i, l in enumerate(lines) if l.strip() == section)
+    except StopIteration:
+        raise LedgerError(f'{FAILURE_LOG} has no "{section}" section')
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    numbered = [(i, int(l.split(".", 1)[0])) for i, l in enumerate(lines[start + 1:end], start + 1)
+                if l.split(".", 1)[0].isdigit() and l.split(".", 1)[1:2] and l.split(".", 1)[1].startswith(" ")]
+    n = max((k for _, k in numbered), default=0) + 1
+    at = (numbered[-1][0] + 1) if numbered else start + 1
+    lines.insert(at, f"{n}. {body}")
+    return "\n".join(lines)
 
 
 def insert_in_section(doc: str, section: str, line: str, before: str | None = None) -> str:
@@ -140,6 +161,11 @@ class Ledger:
             raise LedgerError(f"notes can only be written in: {allowed}")
         return p
 
+    def own(self, name: str) -> Path:
+        if not self.root:
+            raise LedgerError("the vault folder is not set")
+        return self.root / name
+
     def soul(self) -> Path:
         if not self.root:
             raise LedgerError("the vault folder is not set")
@@ -178,6 +204,18 @@ class Ledger:
             raise LedgerError(f"the old text occurs {count} times in soul.md; it must occur exactly once")
         op = {"kind": "replace", "file": SOUL, "old": old, "new": new, "sha": _sha(text),
               "summary": _one_line(reason, "reason")}
+        return self._submit(op, direct_ok=True)
+
+    def log_failure(self, date: str, what: str, caught: str, fix: str, category: str, operative: str) -> Result:
+        category = _one_line(category, "category").lower()
+        if category not in FAILURE_CATEGORIES:
+            raise LedgerError(f"category must be one of: {', '.join(FAILURE_CATEGORIES)}")
+        date = _one_line(date or f"{_now():%Y-%m-%d}", "date")
+        body = (f"**{date}.** {_one_line(what, 'what went wrong')} · {_one_line(caught, 'how it was caught')} · "
+                f"{_one_line(fix, 'fix or rule')} · **Category:** {category} · "
+                f"**Operative fix:** {_one_line(operative, 'operative fix')}")
+        op = {"kind": "numbered", "file": FAILURE_LOG, "section": FAILURE_SECTION, "body": body,
+              "summary": "Add an entry to the agent failure log"}
         return self._submit(op, direct_ok=True)
 
     def propose_edit(self, path: str, old: str, new: str, reason: str) -> Result:
@@ -254,7 +292,7 @@ class Ledger:
 
     def preview(self, op: dict) -> tuple[str, str]:
         """(current text, text after the change). Raises LedgerError if it no longer applies."""
-        p = self.resolve(op["file"], note=op["kind"] != "append") if op["file"] != SOUL else self.soul()
+        p = self.own(op["file"]) if op["file"] in OWN_FILES else self.resolve(op["file"], note=True)
         if op["kind"] == "create":
             if p.exists():
                 raise LedgerError(f"{op['file']} was created by someone else in the meantime")
@@ -264,6 +302,8 @@ class Ledger:
         text = p.read_text(encoding="utf-8")  # re-read just before writing
         if op["kind"] == "append":
             return text, insert_in_section(text, op["section"], op["line"], op.get("before"))
+        if op["kind"] == "numbered":
+            return text, append_numbered(text, op["section"], op["body"])
         if op["kind"] == "replace":
             if _sha(text) != op["sha"]:
                 raise LedgerError(f"{op['file']} changed since this edit was proposed; ask Tally again")
@@ -272,7 +312,7 @@ class Ledger:
 
     def apply(self, op: dict) -> None:
         before, after = self.preview(op)
-        p = self.soul() if op["file"] == SOUL else self.resolve(op["file"], note=True)
+        p = self.own(op["file"]) if op["file"] in OWN_FILES else self.resolve(op["file"], note=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
         backup = None
         if p.exists():
@@ -300,7 +340,7 @@ class Ledger:
         if kb <= WARM_GUIDE_KB:
             note = ""
         elif for_tally:
-            note = " That is over the guide; mention it so Kristian can plan an archive pass."
+            note = " That is over the guide; whether to mention it is up to the core (soul.md may say the pass is deferred)."
         else:
             note = " That is over the guide; an archive pass is due."
         return f"Warm files (bootstrap.md + soul.md) are now {kb:.1f} KB; the guide is about {WARM_GUIDE_KB} KB.{note}"

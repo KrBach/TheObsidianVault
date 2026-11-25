@@ -34,6 +34,8 @@ class Config:
     config_path: Path | None = None
     tick_minutes: float = 6.0
     tick_model: str = "haiku"
+    work_dir: Path | None = None  # the Work vault: read-only from the game
+    web: bool = True  # WebSearch and WebFetch (read-only lookups)
 
 
 # Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
@@ -97,7 +99,11 @@ def load_config(path: Path | None = None) -> Config:
         config_path=path.resolve() if path.exists() else None,
         tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),
         tick_model=str(tally.get("tick_model", "haiku")),
+        web=bool(brain.get("web", True)),
     )
+    work = os.environ.get("TALLY_WORK_DIR") or tally.get("work_dir")
+    if work:
+        cfg.work_dir = _expand(work)
     if cfg.writes_mode not in WRITE_MODES:
         print(f'note: writes.mode "{cfg.writes_mode}" is not one of {", ".join(WRITE_MODES)}; using "off".')
         cfg.writes_mode = "off"

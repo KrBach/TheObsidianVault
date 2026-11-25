@@ -40,6 +40,21 @@ Related: [bootstrap.md](bootstrap.md)
 """
 
 
+FAILURES = """# Agent failure log
+
+## Entries
+
+1. **2026-10-01.** First.
+2. **2026-10-02.** Second.
+
+Taxonomy note.
+
+## How this log is used
+
+1. **Record.** Same session.
+"""
+
+
 class LedgerTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -115,6 +130,28 @@ class LedgerTest(unittest.TestCase):
         i = lines.index("- (nothing else open)")
         self.assertTrue(lines[i - 1].startswith("- Ask about the game. (from The Obsidian Vault"))
         self.assertEqual(lines[i - 2], "- First item.")
+
+    def test_failure_log_gets_the_next_number(self):
+        (self.vault / "agent-failure-log.md").write_text(FAILURES, encoding="utf-8")
+        led = self.ledger("review", soul_direct=True)
+        r = led.log_failure("2026-11-25", "Said X.", "Caught by Kristian.", "Check X.", "Unchecked-claim", "no (log only)")
+        self.assertEqual(r.status, "applied")
+        lines = (self.vault / "agent-failure-log.md").read_text(encoding="utf-8").split("\n")
+        i = lines.index("2. **2026-10-02.** Second.")
+        self.assertEqual(lines[i + 1], "3. **2026-11-25.** Said X. · Caught by Kristian. · Check X. · "
+                                       "**Category:** unchecked-claim · **Operative fix:** no (log only)")
+        self.assertEqual(lines[i + 2:i + 4], ["", "Taxonomy note."])
+        self.assertIn("1. **Record.** Same session.", lines)  # the numbered list under the next heading is untouched
+        with self.assertRaises(LedgerError):
+            led.log_failure("", "x", "y", "z", "vibes", "no")
+
+    def test_failure_log_waits_for_review_when_soul_is_reviewed(self):
+        (self.vault / "agent-failure-log.md").write_text(FAILURES, encoding="utf-8")
+        led = self.ledger("review", soul_direct=False)
+        r = led.log_failure("", "x", "y", "z", "process", "no")
+        self.assertEqual(r.status, "queued")
+        led.approve(r.id)
+        self.assertIn("3. **", (self.vault / "agent-failure-log.md").read_text(encoding="utf-8"))
 
     def test_reject_writes_nothing(self):
         led = self.ledger()

@@ -30,6 +30,9 @@ TOOL_FLAVOUR = {
     "mcp__vault__propose_note": "Tally drafts a new note and sets it on the desk for you",
     "mcp__vault__vault_size": "Tally weighs the ledger",
     "mcp__vault__edit_soul": "Tally amends a page of their own",
+    "mcp__vault__log_failure": "Tally writes a mistake into the failure log",
+    "WebSearch": "Tally sends a runner out for news",
+    "WebFetch": "Tally sends for a page from outside the vault",
     "mcp__vault__go_to": "Tally marks a place on the map",
     "mcp__vault__stay_here": "Tally settles in",
     "mcp__vault__walk_with_kristian": "Tally tucks the ledger under one arm, ready to walk",
@@ -48,7 +51,10 @@ VAULT_TOOLS = [
     "mcp__vault__propose_note",
     "mcp__vault__vault_size",
     "mcp__vault__edit_soul",
+    "mcp__vault__log_failure",
 ]
+
+WEB_TOOLS = ["WebSearch", "WebFetch"]
 
 GAME_TOOLS = [
     "mcp__vault__go_to",
@@ -111,18 +117,42 @@ class ClaudeCodeBrain(Brain):
     def __init__(self, cfg: Config, persona: Persona):
         self.cfg = cfg
         self.persona = persona
-        self.session_id: str | None = None
         self.lock = threading.Lock()
         self.exe = cfg.claude_path
         self.writes = cfg.writes_mode != "off"
         self.mcp_config = write_mcp_config(cfg)  # the game tools are always there; writing tools by mode
+        # The conversation survives a restart of the game: the session id is kept in the state folder.
+        self.session_file = cfg.state_dir / "session.json"
+        self.session_id: str | None = self._load_session()
+
+    def _load_session(self) -> str | None:
+        try:
+            return json.loads(self.session_file.read_text(encoding="utf-8")).get("session_id") or None
+        except (OSError, ValueError):
+            return None
+
+    def _save_session(self) -> None:
+        try:
+            if self.session_id:
+                self.session_file.write_text(json.dumps({"session_id": self.session_id}), encoding="utf-8")
+            elif self.session_file.exists():
+                self.session_file.unlink()
+        except OSError:
+            pass
 
     def reset(self) -> None:
         self.session_id = None
+        self._save_session()
+
+    def _tools(self) -> list[str]:
+        tools = list(self.cfg.tools)
+        if self.cfg.web:
+            tools += [t for t in WEB_TOOLS if t not in tools]
+        return tools
 
     def _command(self) -> list[str]:
-        tools = ",".join(self.cfg.tools)
-        allowed = ",".join(self.cfg.tools + GAME_TOOLS + (VAULT_TOOLS if self.writes else []))
+        tools = ",".join(self._tools())
+        allowed = ",".join(self._tools() + GAME_TOOLS + (VAULT_TOOLS if self.writes else []))
         cmd = [
             self.exe or "claude", "-p",
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
@@ -135,6 +165,8 @@ class ClaudeCodeBrain(Brain):
         ]
         # Only our vault server: no MCP servers from the user's own Claude Code setup.
         cmd += ["--mcp-config", self.mcp_config, "--strict-mcp-config"]
+        if self.cfg.work_dir and self.cfg.work_dir.is_dir():
+            cmd += ["--add-dir", str(self.cfg.work_dir)]  # read-only: only Read/Glob/Grep can reach it
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if self.session_id:
@@ -156,6 +188,7 @@ class ClaudeCodeBrain(Brain):
             proc.stdin.close()
 
             got_text = False
+            resumed = self.session_id
             for line in proc.stdout:
                 try:
                     msg = json.loads(line)
@@ -185,7 +218,12 @@ class ClaudeCodeBrain(Brain):
             proc.wait()
             if proc.returncode != 0 and not got_text:
                 err = (proc.stderr.read() if proc.stderr else "").strip()
+                if resumed and self.session_id == resumed:
+                    # Most often the saved conversation is gone (cleaned up, or another machine).
+                    self.session_id = None
+                    err = (err[-300:] + "\n" if err else "") + "Could not pick up the last conversation; the next message starts a fresh one."
                 yield {"type": "error", "text": err[-500:] or f"claude exited with code {proc.returncode}"}
+            self._save_session()
         yield {"type": "done"}
 
     def muse(self, system: str, prompt: str, model: str) -> str:
