@@ -1,5 +1,6 @@
 // The Character window (owner only): your name, your companion's name, your portrait, the time
-// zone for log timestamps, and your password. Saved by the server in .vault-state/settings.json.
+// zone for log timestamps, and your password. Names and time zone go into the local settings file
+// (outside the game's folder); the portrait and the password hash stay in the state folder.
 
 const $ = (id) => document.getElementById(id);
 let portrait = null; // a data URL waiting to be saved, "" to remove, null to leave as it is

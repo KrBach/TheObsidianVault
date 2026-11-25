@@ -14,8 +14,8 @@ from .config import Config
 
 FALLBACK_CORE = """\
 (No core files were found, so Tally's identity could not be loaded.
-Say so plainly when OWNER talks to you, and tell OWNER to set tally.core_dir
-in config.toml to the folder holding bootstrap.md and soul.md.
+Say so plainly when OWNER talks to you, and tell OWNER to set the Private vault
+folder (the one holding bootstrap.md and soul.md) in the game's menu: Esc, then Settings.
 Do not invent a personality to fill the gap.)
 """
 

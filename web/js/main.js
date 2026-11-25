@@ -10,6 +10,7 @@ import { names, setNames, fill, fillPage } from "./names.js";
 import * as character from "./character.js";
 import { createDenizens } from "./denizens.js";
 import * as voice from "./voice.js";
+import * as settings from "./settings.js";
 
 window.vaultStarted = true; // the scripts loaded; the door may still be closed
 
@@ -526,6 +527,15 @@ function applyIntent(ev) {
 }
 
 // Where Tally is, what they are doing and why: for the talk's game_state line and for ticks.
+// Where the cat is, for Tally's <game_state>: it lives in the browser, so the map plan cannot show it.
+function catText() {
+  const c = state.denizens?.cat;
+  if (!c) return "";
+  const r = roomAt(c.x, c.y);
+  const what = c.onDesk ? "sitting on the ledger on your desk" : c.sleeping ? "asleep" : c.path?.length ? "on the move" : "sitting";
+  return ` The vault cat is ${what} in ${r ? r.name : "the vault"}, at (${c.x},${c.y}).`;
+}
+
 function doingText() {
   const t = state.tally, d = t.doing || { kind: "round" };
   if (d.kind === "follow") return "walking with OWNER";
@@ -796,7 +806,7 @@ async function say(text) {
     // a guest's Tally hears nothing of why Tally is where they are: those reasons can be the owner's business
     ? `A guest (not OWNER) is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ${youAre}.`
     : `OWNER is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
-      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText();
+      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText() + catText();
   state.lastSaid = text;
   try {
     await talk(text, fill(where), {
@@ -936,6 +946,8 @@ $("m-ledger").addEventListener("click", () => { closeMenu(); openLedger(); });
 $("m-logout").addEventListener("click", () => logout());
 $("m-character").addEventListener("click", () => { closeMenu(); character.open(); });
 character.initCharacter();
+$("m-settings").addEventListener("click", () => { closeMenu(); if (!isGuest()) settings.open(); });
+settings.initSettings(() => character.open());
 
 function openBoard() { return isGuest() ? forOwner("notice board") : board.open(); }
 // Walking up to the board in the Entrance Hall
@@ -979,6 +991,10 @@ window.addEventListener("keydown", (e) => {
   if (character.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); character.close(); }
     return; // typing goes to the form
+  }
+  if (settings.isOpen()) {
+    if (e.key === "Escape") { e.preventDefault(); settings.close(); }
+    return;
   }
   if (ledger.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
@@ -1050,7 +1066,7 @@ async function boot() {
     w.creatures.player = { ...w.creatures.player, name: "Guest", fg: "#b8c0cc",
       iso: { ...w.creatures.player.iso, color: "#5a6878" }, portrait: { frame: "#8a94a4" } };
     $("talk-prompt").textContent = "Guest>";
-    for (const id of ["board-open", "m-board", "m-ledger", "m-character"]) $(id).hidden = true;
+    for (const id of ["board-open", "m-board", "m-ledger", "m-character", "m-settings"]) $(id).hidden = true;
   } else {
     $("talk-prompt").textContent = `${names.owner}>`;
   }
@@ -1143,7 +1159,7 @@ async function boot() {
   const statusEl = $("status");
   if (st.core_missing.length) {
     statusEl.innerHTML = `<span class="warn">Tally's core not loaded (${st.core_missing.join(", ")} missing)</span>`;
-    log("Warning: Tally's core files were not found. Set tally.core_dir in config.toml. Tally will say so if you talk.", "err");
+    log("Warning: Tally's core files were not found. Set the vault folder in the menu (Esc → Settings). Tally will say so if you talk.", "err");
   } else {
     $("menu-status").textContent = `brain: ${st.brain} · core: ${st.core_loaded.join(", ")}`;
   }

@@ -1,21 +1,20 @@
 """Character settings changed from inside the game: names, time zone and the owner's portrait.
 
-config.toml stays yours to edit by hand (with its comments); the game never rewrites it. What the
-owner sets in the game's Character window is kept in <state_dir>/settings.json and wins over
-config.toml. An uploaded portrait is kept in <state_dir>/portrait.<ext> and served at /portrait/owner.
+Names and the time zone go straight into the local config file (config.write_local: [names] owner
+and companion, [tally] timezone), the same file you can edit by hand, outside the repo, so an update
+never loses them. Its comments are kept. An uploaded portrait is kept in <state_dir>/portrait.<ext>,
+served at /portrait/owner, and wins over [names] owner_portrait while it is there.
 """
 
 from __future__ import annotations
 
 import base64
-import json
-import os
 import re
 from pathlib import Path
 
-from .names import DEFAULT_COMPANION, DEFAULT_OWNER, clean_name
+from .config import ConfigError, write_local
+from .names import clean_name
 
-SETTINGS = "settings.json"
 PORTRAIT_URL = "portrait/owner"
 IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 MAGIC = {"png": b"\x89PNG", "jpg": b"\xff\xd8\xff", "webp": b"RIFF"}
@@ -27,24 +26,9 @@ class CharacterError(Exception):
     pass
 
 
-def read_settings(state_dir: Path) -> dict:
-    try:
-        data = json.loads((Path(state_dir) / SETTINGS).read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def apply_settings(cfg) -> None:
-    """Lay settings.json over the config (load_config calls this, so every process sees the same)."""
-    s = read_settings(cfg.state_dir)
-    if s.get("owner"):
-        cfg.owner = clean_name(s["owner"], cfg.owner)
-    if s.get("companion"):
-        cfg.companion = clean_name(s["companion"], cfg.companion)
-    if "timezone" in s:
-        cfg.timezone = str(s["timezone"])
-    if s.get("portrait") and portrait_file(cfg.state_dir):
+def apply_portrait(cfg) -> None:
+    """An uploaded portrait wins over [names] owner_portrait (load_config calls this)."""
+    if portrait_file(cfg.state_dir):
         cfg.owner_portrait = PORTRAIT_URL
 
 
@@ -72,43 +56,48 @@ def valid_timezone(name: str) -> bool:
 
 
 def save(cfg, data: dict) -> dict:
-    """Check and keep what the Character window sent. Returns the settings now in force."""
-    s = read_settings(cfg.state_dir)
+    """Check what the Character window sent and write it to the local config at once.
+
+    Everything is checked before anything is written, so a bad field changes nothing.
+    Returns what was set.
+    """
+    names, tally = {}, {}
     if "owner" in data:
         owner = clean_name(data["owner"], "")
         if not owner:
             raise CharacterError("your name may not be empty or contain < > { } \" or `")
-        s["owner"] = owner
+        names["owner"] = owner
     if "companion" in data:
         companion = clean_name(data["companion"], "")
         if not companion:
             raise CharacterError("the companion's name may not be empty or contain < > { } \" or `")
-        s["companion"] = companion
+        names["companion"] = companion
     if "timezone" in data:
         tz = str(data["timezone"] or "").strip()
         if not valid_timezone(tz):
             raise CharacterError(f"'{tz[:40]}' is not a time zone this computer knows (try e.g. Europe/Berlin)")
-        s["timezone"] = tz
+        tally["timezone"] = tz
+    try:
+        if names:
+            write_local(cfg, "names", names)
+        if tally:
+            write_local(cfg, "tally", tally)
+    except ConfigError as e:
+        raise CharacterError(str(e)) from None
     if data.get("portrait"):
         _save_portrait(cfg.state_dir, str(data["portrait"]))
-        s["portrait"] = True
     elif data.get("portrait") == "" and data.get("remove_portrait"):
         for ext in ("png", "jpg", "webp"):
             (Path(cfg.state_dir) / f"portrait.{ext}").unlink(missing_ok=True)
-        s["portrait"] = False
-    Path(cfg.state_dir).mkdir(parents=True, exist_ok=True)
-    tmp = Path(cfg.state_dir) / f".{SETTINGS}.tmp"
-    tmp.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, Path(cfg.state_dir) / SETTINGS)
     # the running game takes the new values at once
-    cfg.owner = s.get("owner", cfg.owner or DEFAULT_OWNER)
-    cfg.companion = s.get("companion", cfg.companion or DEFAULT_COMPANION)
-    cfg.timezone = s.get("timezone", cfg.timezone)
-    if s.get("portrait"):
+    cfg.owner = names.get("owner", cfg.owner)
+    cfg.companion = names.get("companion", cfg.companion)
+    cfg.timezone = tally.get("timezone", cfg.timezone)
+    if portrait_file(cfg.state_dir):
         cfg.owner_portrait = PORTRAIT_URL
-    elif s.get("portrait") is False and cfg.owner_portrait == PORTRAIT_URL:
+    elif cfg.owner_portrait == PORTRAIT_URL:
         cfg.owner_portrait = ""
-    return s
+    return {**names, **tally}
 
 
 def _save_portrait(state_dir: Path, data_url: str) -> None:

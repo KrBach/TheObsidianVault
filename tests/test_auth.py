@@ -73,7 +73,8 @@ class ServerGateTest(unittest.TestCase):
         (vault / "soul.md").write_text("# Soul\nSECRET-SOUL\n", encoding="utf-8")
         (vault / "bootstrap.md").write_text("# Bootstrap\n", encoding="utf-8")
         (vault / "health" / "n.md").write_text("x", encoding="utf-8")
-        cfg = Config(core_dir=vault, state_dir=base / "state", claude_path="", writes_folders=["health"])
+        cfg = Config(core_dir=vault, state_dir=base / "state", claude_path="", writes_folders=["health"],
+                     config_path=base / "config.toml")
         self.game = Game(cfg)
         self.game.auth.set_password("supersecret")
         self.game.layout.save_tally({"x": 20, "y": 4, "doing": {"kind": "stay", "why": "PRIVATE-REASON"}})
@@ -149,11 +150,9 @@ class ServerGateTest(unittest.TestCase):
         with urllib.request.urlopen(self.url + "/portrait/owner") as r:  # shown on the login card, so no login
             self.assertTrue(r.read().startswith(b"\x89PNG"))
         from obsidian_vault.config import load_config
-        import os
-        cfg_path = Path(self.tmp.name) / "c.toml"
-        cfg_path.write_text(f'[writes]\nstate_dir = "{self.game.cfg.state_dir}"\n', encoding="utf-8")
-        again = load_config(cfg_path)  # a new process (the vault tools) sees the same names
+        again = load_config(self.game.cfg.config_path)  # a new process (the vault tools) sees the same names
         self.assertEqual((again.owner, again.companion, again.timezone), ("Robin", "Quill", "Europe/Berlin"))
+        self.assertFalse((self.game.cfg.state_dir / "settings.json").exists())  # the local config, not the state
         bad = [{"owner": ""}, {"timezone": "Mars/Olympus"}, {"portrait": "data:image/png;base64," + base64.b64encode(b"GIF89a").decode()},
                {"portrait": "data:text/html;base64,PGI+"}, {"old_password": "nope", "new_password": "another1"}]
         for body in bad:
