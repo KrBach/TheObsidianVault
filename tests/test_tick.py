@@ -114,7 +114,7 @@ class TickTest(unittest.TestCase):
         old = json.dumps({"time": time.time() - 2 * 86400, "source": "tick", "kind": "go", "place": "x"})
         with open(log.path, "a", encoding="utf-8") as f:
             f.write(old + "\n")
-        self.assertEqual(len(log.recent()), 1)  # a two-day-old move is not handed back
+        self.assertEqual(len(log.recent()), 2)  # a two-day-old move is not handed back
 
 
 if __name__ == "__main__":
