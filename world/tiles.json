@@ -282,6 +282,21 @@
       },
       "lamp": true
     },
+    "notice_board": {
+      "glyph": "▤",
+      "fg": "#c8a070",
+      "bg": "#1a1220",
+      "solid": true,
+      "name": "notice board",
+      "desc": "A cork board on two posts, against the wall by the way in. Errand reports, pages from 'Claude outputs' and links Tally pins go up here.",
+      "iso": {
+        "shape": "noticeboard",
+        "h": 44,
+        "color": "#5a3c22",
+        "cork": "#8a6438",
+        "floor": "#1d1628"
+      }
+    },
     "bell": {
       "glyph": "♪",
       "fg": "#e0b860",

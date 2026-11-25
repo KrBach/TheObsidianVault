@@ -86,7 +86,7 @@ The conversation itself stays small and read-only. Bigger jobs go out as **erran
 
 For large tasks Tally holds a short **meeting** first (goal, what done looks like, limits, cost) and reads the brief back before queuing it. You can call one yourself, for example at the map table.
 
-The **notice board** (`b`, or the board button in the top bar) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as a claude.ai artifact. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
+The **notice board** (`b`, or the board button in the top bar) hangs in the Entrance Hall, by the way in, and shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as a claude.ai artifact. Walk up to it, click it or right-click it to read it, or press `b` anywhere. One paper is pinned to it for each thing on the board (up to six), and a red pin means something new since you last looked. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
 
 ## Furniture: sitting, lying down, walking in place
 
@@ -112,6 +112,7 @@ Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.js
 | `b` | open the notice board (replaces the `b` diagonal step) |
 | `p` | open the ledger |
 | `x` / `z` | sit / lie down (again to get up) |
+| the notice board | on the west wall of the Entrance Hall: walk into it or click it to read it |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
 The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.

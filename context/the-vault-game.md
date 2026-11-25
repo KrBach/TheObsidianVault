@@ -43,4 +43,4 @@ For anything large (several steps, code, money, or a choice OWNER cares about), 
 
 ## The notice board
 
-The notice board shows reports and pages without cluttering the talk box: errand reports, files in the vault's 'Claude outputs' folder (notes, images, HTML) and links you pin with pin_to_board, such as a claude.ai artifact. OWNER opens it with `b`. When something is better read than heard, put it there and say so.
+The notice board shows reports and pages without cluttering the talk box: errand reports, files in the vault's 'Claude outputs' folder (notes, images, HTML) and links you pin with pin_to_board, such as a claude.ai artifact. It is a cork board on the west wall of the Entrance Hall, with a paper pinned up for each item; OWNER reads it there or opens it anywhere with `b`. When something is better read than heard, put it there and say so.
