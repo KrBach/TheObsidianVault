@@ -1,7 +1,7 @@
 """Tally's tick: every few minutes the game asks Tally whether to go somewhere or say something.
 
 It is one small, separate model call (no tools, no conversation history, a short sketch of
-Tally instead of the whole core), so it costs little. The game sends where Tally and Kristian
+Tally instead of the whole core), so it costs little. The game sends where Tally and OWNER
 are; this module turns that into a prompt grounded in the map, and the reply into a move.
 """
 
@@ -71,12 +71,12 @@ def build_prompt(world: dict, payload: dict, memory: str = "") -> str:
     if why:
         lines.append(f"Why: {why}")
     dist = max(abs(px - tx), abs(py - ty))
-    lines.append(f"Kristian is at ({px},{py}) in {proom['name'] if proom else 'the vault'}, "
+    lines.append(f"OWNER is at ({px},{py}) in {proom['name'] if proom else 'the vault'}, "
                  f"{dist} step(s) from you" + (" (same room)." if proom is room and room else "."))
     recent = " ".join(str(payload.get("recent") or "").split())[:300]
     reply = " ".join(str(payload.get("recent_reply") or "").split())[:300]
     if recent:
-        lines.append(f'The last thing he said to you: "{recent}"')
+        lines.append(f'The last thing OWNER said to you: "{recent}"')
     if reply:
         lines.append(f'What you answered (whatever you said you did there is done): "{reply}"')
     if memory:
@@ -127,20 +127,21 @@ class Ticker:
     def __init__(self, cfg, brain):
         self.cfg, self.brain = cfg, brain
         self.lock = threading.Lock()
-        self.moves = MoveLog(cfg.state_dir)
+        self.moves = MoveLog(cfg.state_dir, getattr(cfg, "timezone", ""), getattr(cfg, "fill", None))
         try:
             self.sketch = SKETCH_FILE.read_text(encoding="utf-8")
         except OSError:
             self.sketch = "You are Tally. Answer with one JSON object: {\"go\": \"<place id or stay>\", \"say\": \"\"}"
 
     def tick(self, world: dict, payload: dict) -> dict:
-        # Never while Tally is answering Kristian, and never two ticks at once.
+        # Never while Tally is answering the owner, and never two ticks at once.
         brain_lock = getattr(self.brain, "lock", None)
         if (brain_lock is not None and brain_lock.locked()) or not self.lock.acquire(blocking=False):
             return {"go": "stay", "at": None, "say": "", "skipped": "busy"}
         try:
             prompt = build_prompt(world, payload, self.moves.for_prompt(4))
-            reply = self.brain.muse(self.sketch, prompt, self.cfg.tick_model)
+            fill = getattr(self.cfg, "fill", lambda t: t)
+            reply = self.brain.muse(fill(self.sketch), fill(prompt), self.cfg.tick_model)
         except Exception as e:  # a failed tick just means Tally stays put
             return {"go": "stay", "at": None, "say": "", "error": f"{type(e).__name__}: {e}"[:300]}
         finally:

@@ -720,7 +720,7 @@ export class IsoRenderer {
     c.setTransform(this.dpr * this.zoom, 0, 0, this.dpr * this.zoom, this.dpr * this.origin[0], this.dpr * this.origin[1]);
     c.imageSmoothingEnabled = false; // pixel-art sprites stay crisp when zoomed
 
-    // moving lights: Kristian carries a small lantern, Tally a faint glow
+    // moving lights: the owner carries a small lantern, Tally a faint glow
     const extra = entities.map((e) => {
       const l = this.creatures[e.kind].iso?.light;
       return l ? { x: e.rx, y: e.ry, ...l, rgb: hexToRgb(l.color) } : null;
@@ -771,7 +771,7 @@ export class IsoRenderer {
         continue;
       }
       const iso = this.isoOf(it.id);
-      // Tall things in front of Kristian are cut down so he never disappears behind a wall.
+      // Tall things in front of the owner are cut down so they never disappear behind a wall.
       const ahead = it.depth - pd;
       const cut = (iso.h || 0) > 20 && ahead > 0 && ahead <= 7 && Math.abs(it.x - it.y - pc) <= 3 + ahead * 0.5;
       this.drawTile(it.x, it.y, it.ch, it.id, t, light[it.y][it.x], cut);

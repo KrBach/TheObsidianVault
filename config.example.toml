@@ -1,9 +1,21 @@
 # Copy this file to config.toml and edit it. config.toml is git-ignored.
 
+[names]
+# Who is who. The code never names a real person; these go into the game's text and what the
+# companion is told. Your companion's identity itself (voice, character) lives in soul.md.
+owner = "Your name"
+companion = "Tally"
+# Your portrait in the talk box and on the login card: an image under web/, e.g. "portraits/me.jpg".
+# Leave empty for a painted stand-in.
+owner_portrait = ""
+
 [tally]
 # Folder that holds Tally's shared core (bootstrap.md, soul.md).
 # This is read, never written. Your private notes stay out of the repo.
 core_dir = "~/path/to/obsidian/Private"
+
+# Time zone for log timestamps (an IANA name such as "Europe/Berlin"). Empty = this computer's.
+timezone = ""
 
 # Core files, loaded in this order from core_dir.
 core_files = ["bootstrap.md", "soul.md"]
@@ -71,8 +83,8 @@ port = 8765
 #   research  reads the vaults and the web, writes nothing
 #   code      changes the game in its own git worktree and branch (errand/<id>), runs the tests,
 #             commits and pushes that branch only; never main, never a merge
-#   session   your full Claude Code setup (skills, connectors, browser) in the vault folder, e.g. the
-#             Arknights data check; tools that spend art credits are blocked unless the errand
+#   session   your full Claude Code setup (skills, connectors, browser) in the vault folder, e.g. a
+#             regular data check; tools that spend art credits are blocked unless the errand
 #             carries a spending limit you approved
 enabled = true
 timeout_minutes = 45

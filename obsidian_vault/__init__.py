@@ -1,1 +1,1 @@
-"""The Obsidian Vault: a small ASCII place where Kristian visits Tally."""
+"""The Obsidian Vault: a small ASCII place where OWNER visits Tally."""

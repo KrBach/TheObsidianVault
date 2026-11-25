@@ -151,7 +151,9 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .login-box { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 24px; }
 .login-cards { display: flex; gap: 18px; margin-top: 8px; }
 .login-card { display: flex; flex-direction: column; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 8px; cursor: pointer; }
-.login-card img, .login-card .guest-art { width: 120px; height: 150px; object-fit: cover; display: flex; align-items: center; justify-content: center; }
+.login-card img, .login-card img[hidden], .login-card .guest-art[hidden] { display: none; }
+.login-card .guest-art { width: 120px; height: 150px; object-fit: cover; display: flex; align-items: center; justify-content: center; }
+.login-card img[hidden], .login-card .guest-art[hidden] { display: none; }
 .login-card .guest-art { background: linear-gradient(#1a1426, #0a0610); color: var(--dim); font-size: 48px; }
 .login-card:hover, .login-card.chosen { border-color: var(--accent); color: var(--accent); }
 #login-form { display: flex; flex-direction: column; gap: 6px; width: 260px; }

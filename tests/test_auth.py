@@ -1,4 +1,4 @@
-"""Tests for the login: Kristian's password, guests, and what a guest may not reach.
+"""Tests for the login: the owner's password, guests, and what a guest may not reach.
 
 Run: python3 -m unittest discover -s tests
 """
@@ -41,19 +41,19 @@ class AuthTest(unittest.TestCase):
     def test_first_password_then_login(self):
         self.assertFalse(self.auth.has_password())
         with self.assertRaises(AuthError):
-            self.auth.login("kristian", "supersecret")  # nothing set yet
+            self.auth.login("owner", "supersecret")  # nothing set yet
         with self.assertRaises(AuthError):
-            self.auth.login("kristian", "short", new_password=True)
-        tok = self.auth.login("kristian", "supersecret", new_password=True)
-        self.assertEqual(self.auth.role(tok), "kristian")
+            self.auth.login("owner", "short", new_password=True)
+        tok = self.auth.login("owner", "supersecret", new_password=True)
+        self.assertEqual(self.auth.role(tok), "owner")
         self.assertNotIn("supersecret", self.auth.login_file.read_text())
         with self.assertRaises(AuthError):  # the first-time path cannot replace a set password
-            self.auth.login("kristian", "another one", new_password=True)
+            self.auth.login("owner", "another one", new_password=True)
         with self.assertRaises(AuthError):
-            self.auth.login("kristian", "wrong")
-        self.assertEqual(self.auth.role(self.auth.login("kristian", "supersecret")), "kristian")
+            self.auth.login("owner", "wrong")
+        self.assertEqual(self.auth.role(self.auth.login("owner", "supersecret")), "owner")
         self.assertNotIn(tok, self.auth.sessions_file.read_text())  # only hashes of tokens are kept
-        self.assertEqual(Auth(Path(self.tmp.name)).role(tok), "kristian")  # survives a restart
+        self.assertEqual(Auth(Path(self.tmp.name)).role(tok), "owner")  # survives a restart
         self.auth.logout(tok)
         self.assertIsNone(self.auth.role(tok))
 
@@ -104,20 +104,20 @@ class ServerGateTest(unittest.TestCase):
     def test_nothing_without_a_login(self):
         self.assertEqual(self.call("/api/world")[0], 401)
         self.assertEqual(self.call("/api/talk", {"text": "hi"})[0], 401)
-        self.assertEqual(self.call("/api/login", {"role": "kristian", "password": "nope"})[0], 401)
+        self.assertEqual(self.call("/api/login", {"role": "owner", "password": "nope"})[0], 401)
         status, data, _ = self.call("/api/login")
         self.assertEqual((status, data["role"], data["has_password"]), (200, None, True))
 
-    def test_kristian_gets_everything(self):
-        c = self.login("kristian", "supersecret")
+    def test_owner_gets_everything(self):
+        c = self.login("owner", "supersecret")
         status, world, _ = self.call("/api/world", cookie=c)
-        self.assertEqual((status, world["role"]), (200, "kristian"))
+        self.assertEqual((status, world["role"]), (200, "owner"))
         self.assertIn("health", [s["name"] for s in world["shelves"]])
         self.assertEqual(world["tally_saved"]["doing"]["why"], "PRIVATE-REASON")
         self.assertEqual(self.call("/api/pending", cookie=c)[0], 200)
         self.assertEqual(self.call("/api/board", cookie=c)[0], 200)
 
-    def test_guest_is_kept_out_of_kristians_things(self):
+    def test_guest_is_kept_out_of_the_owners_things(self):
         c = self.login("guest")
         status, world, _ = self.call("/api/world", cookie=c)
         self.assertEqual((status, world["role"]), (200, "guest"))

@@ -1,7 +1,7 @@
-"""Who is in the vault: Kristian (with a password) or a guest.
+"""Who is in the vault: the owner (with a password) or a guest. Names come from config.toml [names].
 
 The password is never stored, only a salted PBKDF2 hash in <state_dir>/login.json (git-ignored).
-The first time the game opens, the login screen asks Kristian to choose one. To change it later:
+The first time the game opens, the login screen asks the owner to choose one. To change it later:
 
     python3 -m obsidian_vault.auth set-password
 
@@ -22,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-ROLES = ("kristian", "guest")
+ROLES = ("owner", "guest")
 ITERATIONS = 310_000
 SESSION_DAYS = 30
 MIN_PASSWORD = 6
@@ -69,7 +69,8 @@ class Auth:
 
     def _stored(self) -> str:
         try:
-            return json.loads(self.login_file.read_text(encoding="utf-8")).get("kristian", "")
+            data = json.loads(self.login_file.read_text(encoding="utf-8"))
+            return data.get("owner", "")
         except (OSError, ValueError):
             return ""
 
@@ -82,7 +83,7 @@ class Auth:
         with self.lock:
             if first_time and self.has_password():
                 raise AuthError("a password is already set")
-            _write(self.login_file, {"kristian": hash_password(pw)})
+            _write(self.login_file, {"owner": hash_password(pw)})
 
     # ---------- sessions ----------
 
@@ -107,11 +108,11 @@ class Auth:
         """Check who is coming in and return a session token."""
         if role == "guest":
             return self._new_session("guest")
-        if role != "kristian":
+        if role != "owner":
             raise AuthError("no such character")
         if new_password:
             self.set_password(password, first_time=True)
-            return self._new_session("kristian")
+            return self._new_session("owner")
         if not self.has_password():
             raise AuthError("no password is set yet; choose one first")
         if self.failures >= 3:
@@ -120,7 +121,7 @@ class Auth:
             self.failures += 1
             raise AuthError("that is not the password")
         self.failures = 0
-        return self._new_session("kristian")
+        return self._new_session("owner")
 
     def role(self, token: str | None) -> str | None:
         if not token:
@@ -149,7 +150,7 @@ def main(argv: list[str] | None = None) -> None:
     from .config import load_config
 
     auth = Auth(load_config().state_dir)
-    pw = getpass.getpass("New password for Kristian: ")
+    pw = getpass.getpass("New password for the owner: ")
     if pw != getpass.getpass("Again: "):
         raise SystemExit("The two did not match. Nothing changed.")
     try:

@@ -187,9 +187,9 @@ class BoardTest(_Vault):
 
     def test_pins(self):
         board = Board(self.cfg())
-        board.pin("Arknights dashboard", "https://claude.ai/artifact/abc", "v92")
-        board.pin("Arknights dashboard v2", "https://claude.ai/artifact/abc")  # same url: replaced, not doubled
-        self.assertEqual([p["title"] for p in board.pins()], ["Arknights dashboard v2"])
+        board.pin("Weekly dashboard", "https://claude.ai/artifact/abc", "v92")
+        board.pin("Weekly dashboard v2", "https://claude.ai/artifact/abc")  # same url: replaced, not doubled
+        self.assertEqual([p["title"] for p in board.pins()], ["Weekly dashboard v2"])
         with self.assertRaises(BoardError):
             board.pin("x", "javascript:alert(1)")
         board.unpin("https://claude.ai/artifact/abc")

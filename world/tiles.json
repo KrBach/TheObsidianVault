@@ -518,7 +518,7 @@
     "player": {
       "glyph": "@",
       "fg": "#ffe066",
-      "name": "Kristian",
+      "name": "Owner",
       "iso": {
         "color": "#b08a3a",
         "ring": "#7ee08a",
@@ -529,7 +529,6 @@
         }
       },
       "portrait": {
-        "image": "portraits/kristian.jpg",
         "frame": "#d9b060"
       }
     },

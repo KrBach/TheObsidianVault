@@ -9,7 +9,7 @@ Tally never edits files freely. It asks for one of five changes:
   propose_edit    replace one exact passage in an existing note
   propose_note    create a new note
 
-Each change is either applied at once or queued for Kristian to approve in the game,
+Each change is either applied at once or queued for OWNER to approve in the game,
 depending on writes.mode in config.toml:
 
   off      nothing can be written (the default before this feature)
@@ -71,12 +71,12 @@ class Result:
     id: str | None = None
 
 
+_TZ = ""  # set from config ([tally] timezone) when a Ledger is made
+
+
 def _now() -> datetime:
-    tz = ZoneInfo("Europe/Copenhagen") if ZoneInfo else None
-    try:
-        return datetime.now(tz)
-    except Exception:  # no tz database on this machine
-        return datetime.now()
+    from .names import local_now
+    return local_now(_TZ)
 
 
 def _sha(text: str) -> str:
@@ -129,6 +129,8 @@ def insert_in_section(doc: str, section: str, line: str, before: str | None = No
 
 class Ledger:
     def __init__(self, cfg: Config, on_errand=None):
+        global _TZ
+        _TZ = getattr(cfg, "timezone", "") or ""
         self.cfg = cfg
         self.on_errand = on_errand  # starts an approved errand (the game sets this; the MCP server does not)
         self.root = cfg.core_dir.resolve() if cfg.core_dir else None
@@ -181,7 +183,8 @@ class Ledger:
             self.resolve(theme_link, note=False)  # must be a real-looking vault path
             theme = f"{theme} ([note]({theme_link}))"
         stamp = _now().strftime("%Y-%m-%d %H:%M")
-        line = f"- {stamp} (Europe/Copenhagen), Project: {PROJECT_NAME} · Theme: {theme}: {entry}"
+        from .names import tz_label
+        line = f"- {stamp} ({tz_label(_TZ)}), Project: {PROJECT_NAME} · Theme: {theme}: {entry}"
         op = {"kind": "append", "file": SOUL, "section": LOG_SECTION, "line": line,
               "summary": "Add a line to the interaction log"}
         return self._submit(op, direct_ok=True)
@@ -276,8 +279,8 @@ class Ledger:
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         (self.pending_dir / f"{op['id']}.json").write_text(json.dumps(op, ensure_ascii=False), encoding="utf-8")
         if op["kind"] == "errand":
-            return Result("queued", f"Errand queued at the desk (id {op['id']}). Nothing runs until Kristian approves it.", op["id"])
-        return Result("queued", f"Queued for Kristian's review in the game (id {op['id']}). Nothing is written until he approves it.", op["id"])
+            return Result("queued", f"Errand queued at the desk (id {op['id']}). Nothing runs until OWNER approves it.", op["id"])
+        return Result("queued", f"Queued for OWNER's review in the game (id {op['id']}). Nothing is written until OWNER approves it.", op["id"])
 
     def pending(self) -> list[dict]:
         if not self.pending_dir.is_dir():
@@ -312,7 +315,7 @@ class Ledger:
                 raise LedgerError("errands can only be started from the game")
             try:
                 msg = self.on_errand(op)
-            except Exception as e:  # stays pending, so he can approve it again later
+            except Exception as e:  # stays pending, so the owner can approve it again later
                 raise LedgerError(f"the errand did not start: {e}")
             f.unlink()
             self._log({"event": "errand started", "file": op["file"], "summary": op.get("summary")})

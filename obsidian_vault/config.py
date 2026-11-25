@@ -49,6 +49,16 @@ class Config:
     errand_session_tools: list[str] = field(default_factory=lambda: list(DEFAULT_SESSION_TOOLS))
     # The notice board: what the game may show. Vault folders (relative to core_dir), read-only.
     board_folders: list[str] = field(default_factory=lambda: ["Claude outputs"])
+    # Who is who ([names]): the vault's owner and their companion. Nothing personal lives in the code.
+    owner: str = "Owner"
+    companion: str = "Tally"
+    owner_portrait: str = ""  # an image under web/, e.g. "portraits/me.jpg"; empty = a painted stand-in
+    timezone: str = ""  # an IANA name such as "Europe/Berlin" for log timestamps; empty = this computer's
+
+    def fill(self, text: str) -> str:
+        """Text written with OWNER and Tally, with this vault's names in."""
+        from .names import fill
+        return fill(text, self.owner, self.companion)
 
 
 # Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
@@ -125,6 +135,12 @@ def load_config(path: Path | None = None) -> Config:
         cfg.errand_worktrees = _expand(errands["worktrees"])
     cfg.errand_session_tools = list(errands.get("session_tools", DEFAULT_SESSION_TOOLS))
     cfg.board_folders = list(data.get("board", {}).get("folders", ["Claude outputs"]))
+    from .names import DEFAULT_COMPANION, DEFAULT_OWNER, clean_name
+    names = data.get("names", {})
+    cfg.owner = clean_name(os.environ.get("VAULT_OWNER") or names.get("owner"), DEFAULT_OWNER)
+    cfg.companion = clean_name(names.get("companion"), DEFAULT_COMPANION)
+    cfg.owner_portrait = str(names.get("owner_portrait", "")).strip()
+    cfg.timezone = str(tally.get("timezone", "")).strip()
     work = os.environ.get("TALLY_WORK_DIR") or tally.get("work_dir")
     if work:
         cfg.work_dir = _expand(work)

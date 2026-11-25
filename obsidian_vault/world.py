@@ -8,7 +8,7 @@ Every change is checked with the same map check as the repo (check_map.check): i
 would block a doorway or a pool would cut a room off, the change is refused with the reason.
 Walls, doors, shelves and Tally's desk cannot be moved from here.
 
-Tally also tells the game where they mean to be (go somewhere, stay put, follow Kristian, or
+Tally also tells the game where they mean to be (go somewhere, stay put, follow OWNER, or
 wander freely). That intent is written to <state_dir>/intent.json by the vault tools and
 picked up by the game when Tally's reply ends.
 
@@ -240,7 +240,7 @@ class World:
         elif kind == "stay":
             msg = f"You will stay where you are {until}."
         elif kind == "follow":
-            msg = f"You will walk with Kristian {until}."
+            msg = f"You will walk with OWNER {until}."
         elif kind == "free":
             msg = "You are free to wander again."
         else:
