@@ -55,6 +55,9 @@ at once in the report.
 
 End with a short report in plain Markdown (no tables): what you did, what you checked and how, what is
 left, and anything that needs OWNER's decision. Put any link or branch name OWNER needs in it.
+Reports end up on the notice board and code ends up in a public repo, so name local folders by a
+short form ("the Private vault", "~/…/<last folder>"), never by their full path, and write no email
+addresses, phone numbers or other personal details where a short form will do.
 """
 
 KIND_RULES = {
@@ -63,7 +66,8 @@ KIND_RULES = {
     "code": "Kind: code. You are in your own git worktree of The Obsidian Vault on the branch {branch}; the copy "
             "of the game that is running is elsewhere and must not be touched. Make the change, follow the "
             "README's conventions, run `python3 -m unittest discover -s tests`, and commit with a clear "
-            "message. Then push this branch only, with `git push -u origin {branch}`. Never push to main or "
+            "message. Keep personal paths and data out of the repo: they belong in the local config "
+            "(see config.py), and tests/test_pii.py fails if a tracked file holds one. Then push this branch only, with `git push -u origin {branch}`. Never push to main or "
             "merge anything. If the push fails, say so; the commits stay on the branch.",
     "session": "Kind: session. You have OWNER's own Claude Code setup in the Private vault folder: OWNER's skills, "
                "connectors and the browser, and you may edit notes as a normal session would, following "
