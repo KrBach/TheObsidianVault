@@ -7,6 +7,8 @@ Run: python3 -m obsidian_vault.check_map
   rather than a pocket (the way out of the vault is exempt),
 - Tally can be reached (a walkable tile within talking range is reachable), and every
   post Tally walks between (tally_posts) and every named spot (spots) is reachable,
+- Brass's places ("brass") each have a reachable cell to stand on that is clear of doorways,
+  the bell, the welcome mat and the cat's cushion, and his door is the way out,
 - lamps (tiles with "lamp": true) that block movement stand against a wall.
 
 Only straight moves count, so nothing depends on squeezing diagonally past a corner.
@@ -103,6 +105,29 @@ def check(world: dict, tiles: dict) -> list[str]:
         sx, sy = spot["at"]
         if tuple(spot["at"]) != tuple(world["tally"]) and (sx, sy) not in seen:
             problems.append(f"spot '{spot.get('id', '?')}' at ({sx},{sy}) cannot be reached")
+
+    # Brass's places ("brass"): he comes and goes by the way out, and at the desk, the Outbox table and
+    # the board he needs a reachable cell at or beside the anchor that is not in or by a doorway, by the
+    # bell, on the welcome mat, on the cat's cushion or on the way in (the same rule as in denizens.js).
+    brass = world.get("brass") or {}
+    if brass and list(brass.get("door") or []) != list(world.get("exit") or []):
+        problems.append("Brass's door must be the way out (exit)")
+    fixed = {tuple(world["spawn"]), tuple(world["exit"]), tuple(world["tally"])}
+    near8 = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
+
+    def brass_may_stand(x, y):
+        if (x, y) not in seen or (x, y) in fixed or tile(x, y) in ("door", "mat", "cushion"):
+            return False
+        if any(tile(x + dx, y + dy) == "door" for dx, dy in STEPS):
+            return False
+        return not any(tile(x + dx, y + dy) == "bell" for dx, dy in near8)
+
+    for name, at in brass.items():
+        if name == "door":
+            continue
+        ax, ay = at
+        if not any(brass_may_stand(ax + dx, ay + dy) for dx, dy in [(0, 0)] + near8):
+            problems.append(f"Brass has nowhere to stand at his '{name}' place ({ax},{ay})")
 
     # Lamps and braziers that block movement must stand against a wall, out of the way.
     for y, row in enumerate(grid):

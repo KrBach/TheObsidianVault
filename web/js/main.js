@@ -551,6 +551,30 @@ function catText() {
     (d.hungry() ? " It has not been fed for over three hours." : "");
 }
 
+// Brass, for Tally's <game_state>: one short phrase while he is in the vault.
+function brassText() {
+  const t = state.denizens?.brassText?.();
+  return t ? ` ${t}` : "";
+}
+
+// Where Brass should be comes from the server (brass.py): which code errands wait, run or ended.
+async function pollBrass() {
+  if (document.hidden || !state.denizens) return;
+  try {
+    const r = await fetch("/api/brass");
+    if (r.ok) state.denizens.brassSet(await r.json());
+  } catch (_) { /* the server is away: he stays where he is */ }
+}
+
+// He has played out a walk to the board or out of the door: that errand is finished with.
+async function brassSeen(errand) {
+  try {
+    const r = await fetch("/api/brass/seen", { method: "POST", headers: { "Content-Type": "application/json" },
+                                               body: JSON.stringify({ errand }) });
+    if (r.ok) state.denizens.brassSet(await r.json());
+  } catch (_) { /* the next poll catches up */ }
+}
+
 // ---------- tending the cat ----------
 // Pet, feed, play and call go to the server, which has the rules (the same for Tally); the
 // answer is a one-line emote and an effect the cat plays out. All but calling need you next to it.
@@ -878,7 +902,7 @@ async function say(text) {
     // a guest's Tally hears nothing of why Tally is where they are: those reasons can be the owner's business
     ? `A guest (not OWNER) is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ${youAre}.`
     : `OWNER is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
-      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText() + catText();
+      `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText() + catText() + brassText();
   state.lastSaid = text;
   saveCat(); saveTally(); // so Tally's tools (tend_cat) see where everyone is now
   try {
@@ -947,6 +971,7 @@ function ctxOptions(x, y) {
     return { head: n, opts: catOpts };
   }
   if (resident === "imp") return { head: "an imp", opts: [["Look at the imp", () => state.denizens.lookAtImp()]] };
+  if (resident === "brass") return { head: "Brass", opts: [["Look at Brass", () => state.denizens.lookAtBrass()]] };
   if (x === state.tally.x && y === state.tally.y) {
     head = "Tally";
     opts.push(["Talk to Tally", () => walkTo(x, y)], ["Look at Tally", lookAtTally]);
@@ -1152,8 +1177,13 @@ async function boot() {
   labelShelves();
   // the cat and the errand imp: scripted here, no model calls
   state.denizens = createDenizens(w, { tileAt, log, roomAt,
-    people: () => ({ player: state.player, tally: state.tally }) });
+    people: () => ({ player: state.player, tally: state.tally }), brassSeen });
   state.denizens.restore(w.cat_saved);
+  if (!isGuest()) { // Brass follows the owner's code errands; a guest never sees him
+    state.denizens.brassRestore(w.brass_saved);
+    setInterval(pollBrass, 4000);
+    window.addEventListener("vault:errands", () => setTimeout(pollBrass, 800));
+  }
   w.catBowlFull = () => Date.now() - state.denizens.cat.fedAt < 20 * 60 * 1000; // food in the bowl a while after a meal
   setInterval(() => state.denizens.tick(!isGuest() && ledger.pendingCount() >= 4), 150);
   setInterval(() => saveCat(), 5000);

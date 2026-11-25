@@ -14,13 +14,20 @@
 //
 // The imp is the errand runner. When an errand starts it leaves the desk and runs out of the
 // vault; when the errand is done it comes back in with the report and pins it to the notice board.
+//
+// Brass, the Artificer, has a temporary body that follows the life of a code errand. The server
+// says which stage he is at (brass.py); this file walks him there. Queued: in by the front door to
+// stand beside Tally's desk. Rejected: back out of the front door. Approved: to the Outbox table,
+// tinkering while it runs. Done or failed: to the notice board, a pause, then out of the front door.
+// He never stands in or by a doorway, by the bell, on the welcome mat or on the cat's cushion, and
+// like the cat he blocks nobody.
 
 const STEPS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const STEPS8 = [...STEPS4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const WARM = new Set(["brazier", "fireplace", "fireplace_side"]);
 const SOFT = { cushion: 6, hammock: 4, couch: 2 }; // where it likes to sleep, and how much
 const LIFT = { desk: 17, map_table: 13, hammock: 10, couch: 6, cushion: 3 }; // how high it sits on each
-const CAT_STEP_MS = 520, IMP_STEP_MS = 190;
+const CAT_STEP_MS = 520, IMP_STEP_MS = 190, BRASS_STEP_MS = 430, BOARD_PAUSE_MS = 5000;
 const HUNGRY_MS = 3 * 3600 * 1000;
 const S = 1000;
 
@@ -33,7 +40,7 @@ const CAT_LOOKS = [
 
 export function createDenizens(world, api) {
   const { tileAt, log, now = () => performance.now(), clock = () => Date.now(),
-          people = () => ({}), roomAt = () => null } = api;
+          people = () => ({}), roomAt = () => null, brassSeen = () => {} } = api;
   const def = world.creatures?.cat || {};
   const NAME = def.call || "the cat";
   const cell = tileAt;
@@ -376,18 +383,137 @@ export function createDenizens(world, api) {
     if (imp.alpha <= 0) { imp.hidden = true; imp.job = null; }
   }
 
+  // ---------- Brass, the Artificer ----------
+
+  const brass = { kind: "brass", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, nextStep: 0,
+                  want: { present: false }, goal: null, arrived: false, pauseUntil: 0, tinker: false,
+                  pinned: "", told: new Set() };
+  // where he may stand: not by a door, the bell, the mat or the way in (as for the cat), nor on its cushion
+  const brassOk = (x, y) => open(x, y) && !forbidden(x, y) && id(x, y) !== "cushion";
+  const stationOf = (goal) => (world.brass || {})[goal];
+  function standCell(goal) {
+    if (goal === "door") return open(...world.exit) ? world.exit : exitIn();
+    const a = stationOf(goal);
+    if (!a) return null;
+    if (brassOk(a[0], a[1])) return a;
+    // the anchor is taken (Tally may have put the Outbox table right there): the nearest good cell beside it
+    for (let r = 1; r <= 3; r++) {
+      const ring = [];
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === r && brassOk(a[0] + dx, a[1] + dy)) ring.push([a[0] + dx, a[1] + dy]);
+      }
+      ring.sort((p, q) => (Math.abs(p[0] - a[0]) + Math.abs(p[1] - a[1])) - (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1])));
+      if (ring.length) return ring[0];
+    }
+    return null;
+  }
+  const seenOnce = (eid) => { if (eid && !brass.told.has(eid)) { brass.told.add(eid); brassSeen(eid); } };
+  // where he is going: the stage's place, or after pinning a report, wherever the server says is next
+  function brassGoal() {
+    const w = brass.want;
+    if (!w?.present) return "door";
+    if (w.stage === "reporting" && brass.pinned === w.errand) return w.then || "door";
+    return w.goes;
+  }
+
+  function brassArrive(goal, t) {
+    const w = brass.want, title = w?.title || "an errand";
+    brass.tinker = goal === "outbox";
+    if (goal === "desk") log(`Brass sets his toolbox down beside Tally's desk and waits for you to look at "${title}" in the ledger.`, "action");
+    else if (goal === "outbox") log(`Brass spreads his tools on the Outbox table and gets to work on "${title}".`, "action");
+    else if (goal === "board") {
+      log(`Brass pins a note to the notice board: "${title}" ${w.outcome === "failed" ? "failed" : "is done"}.`, "action");
+      brass.pauseUntil = t + BOARD_PAUSE_MS;
+    } else if (goal === "door") log("Brass tips his goggles to nobody in particular and goes out by the front door.", "action");
+  }
+
+  function brassStep(t) {
+    const w = brass.want;
+    if (brass.hidden) {
+      if (!w?.present) return;
+      if (w.stage === "leaving") { seenOnce(w.errand); return; } // a rejection nobody saw him for: nothing to walk
+      if (w.stage === "reporting" && brass.told.has(w.errand)) return;
+      [brass.x, brass.y] = world.exit; brass.rx = brass.x; brass.ry = brass.y;
+      brass.hidden = false; brass.alpha = 0; brass.goal = null; brass.arrived = false; brass.tinker = false;
+      log(w.stage === "reporting"
+        ? `The front door opens and Brass, the Artificer, stumps in with the report on "${w.title}".`
+        : `The front door opens and Brass, the Artificer, stumps in with his toolbox, about "${w.title}".`, "action");
+    }
+    const goal = brassGoal();
+    if (goal !== brass.goal) {
+      if (goal === "door" && w?.stage === "leaving" && brass.goal === "desk") log("Brass shrugs at the rejected brief and picks up his toolbox.", "action");
+      brass.goal = goal; brass.arrived = false; brass.tinker = false;
+      const to = standCell(goal);
+      brass.path = (to && bfs([brass.x, brass.y], [to], open)) || [];
+    }
+    if (brass.path.length) {
+      brass.alpha = Math.min(1, brass.alpha + 0.1);
+      if (t < brass.nextStep) return;
+      brass.nextStep = t + BRASS_STEP_MS;
+      [brass.x, brass.y] = brass.path.shift();
+      return;
+    }
+    if (!brass.arrived) { brass.arrived = true; brassArrive(goal, t); }
+    if (goal === "door") {
+      brass.alpha -= 0.06;
+      if (brass.alpha <= 0) {
+        brass.hidden = true; brass.goal = null; brass.tinker = false;
+        if (w?.present && (w.stage === "leaving" || w.stage === "reporting")) seenOnce(w.errand);
+      }
+      return;
+    }
+    brass.alpha = Math.min(1, brass.alpha + 0.1);
+    if (goal === "board" && w?.stage === "reporting" && brass.pinned !== w.errand && t >= brass.pauseUntil) {
+      brass.pinned = w.errand; // walks on at once; the server hears it and says what is next
+      seenOnce(w.errand);
+    }
+  }
+
+  // The server's word on where he should be (brass.py), from the poll.
+  function brassSet(st) { brass.want = st || { present: false }; }
+
+  // At boot: an errand waiting or running puts him straight back where he was, with no walk in.
+  function brassRestore(st) {
+    brassSet(st);
+    if (!st?.present || !["waiting", "working"].includes(st.stage)) return false;
+    const at = standCell(st.goes);
+    if (!at) return false;
+    [brass.x, brass.y] = at; brass.rx = brass.x; brass.ry = brass.y;
+    brass.hidden = false; brass.alpha = 1; brass.goal = st.goes; brass.arrived = true; brass.tinker = st.goes === "outbox";
+    return true;
+  }
+
+  // For Tally's game_state: one short phrase, only while he is in.
+  function brassText() {
+    if (brass.hidden) return "";
+    const w = brass.want;
+    if (brass.goal === "door" || !w?.present) return "Brass is leaving by the front door.";
+    if (brass.pinned === w.errand) return "Brass has pinned his report and is moving on.";
+    return (brass.arrived ? w.say : w.going) || "";
+  }
+
   return {
     cat,
     imp,
     name: NAME,
-    entities() { return imp.hidden ? [cat] : [cat, imp]; },
-    tick(busy) { const t = now(); catStep(t, busy); impStep(t); },
+    brass,
+    entities() { return [cat, ...(imp.hidden ? [] : [imp]), ...(brass.hidden ? [] : [brass])]; },
+    tick(busy) { const t = now(); catStep(t, busy); impStep(t); brassStep(t); },
     errandOut(e) { out.push(e); },
     errandBack(e) { back.push(e); },
+    brassSet,
+    brassRestore,
+    brassText,
     at(x, y) {
       if (cat.x === x && cat.y === y) return "cat";
       if (!imp.hidden && imp.x === x && imp.y === y) return "imp";
+      if (!brass.hidden && brass.x === x && brass.y === y) return "brass";
       return "";
+    },
+    lookAtBrass() {
+      const d = world.creatures?.brass?.desc || "Brass, the Artificer.";
+      const t = brassText();
+      log(`${d}${t ? ` ${t}` : ""}`);
     },
     apply,
     snapshot,

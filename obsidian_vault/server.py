@@ -18,6 +18,7 @@ from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
+from .brass import Brass
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .tick import Ticker
 from .world import World, WorldError
@@ -37,6 +38,7 @@ class Game:
         self.ticker = Ticker(cfg, self.brain, self.errands)
         self.layout = World(cfg.state_dir)
         self.cat = Cat(cfg.state_dir)
+        self.brass = Brass(cfg.state_dir)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
 
@@ -55,6 +57,7 @@ class Game:
             cr["tally"] = {**cr["tally"], "name": self.cfg.companion, "desc": self.cfg.fill(cr["tally"].get("desc", ""))}
         world["cat_saved"] = self.cat.get()  # where the cat was, its mood, and how long since it ate
         world["tally_saved"] = self.layout.tally()  # where Tally was when the game last closed
+        world["brass_saved"] = {"present": False} if guest else self.brass_state()  # errands are the owner's
         world["status"] = {
             "brain": self.brain.name,
             "core_loaded": self.persona.loaded,
@@ -90,6 +93,10 @@ class Game:
             self.brain.mcp_config = write_mcp_config(self.cfg)  # the vault tools get the new folder
         if "core_dir" in changed:
             self.brain.reset()  # a conversation belongs to the folder it ran in; start a fresh one
+
+    def brass_state(self) -> dict:
+        """Where Brass should be: the pending ops are read before the records (see Brass.update)."""
+        return self.brass.update(self.ledger.pending(), self.errands.all())
 
     def names(self) -> dict:
         return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
@@ -155,7 +162,8 @@ def make_handler(game: Game):
             self.wfile.write(body)
 
         # Guests may walk around and talk to Tally; the owner's things stay theirs.
-        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character", "/api/settings")
+        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character", "/api/settings",
+                      "/api/brass")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -201,6 +209,8 @@ def make_handler(game: Game):
                                                for r in game.errands.all()[:20]]})
             if self.path == "/api/world":
                 return self._json(game.world(role))
+            if self.path == "/api/brass":  # owner only (OWNER_ONLY): Brass follows the owner's code errands
+                return self._json(game.brass_state())
             if self.path == "/api/character":
                 return self._json({**game.names(), "timezone": game.cfg.timezone,
                                    "uploaded": bool(portrait_file(game.cfg.state_dir))})
@@ -282,6 +292,10 @@ def make_handler(game: Game):
                 except CatError as e:
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
                 return self._json({**res, "cat": game.cat.get()})
+
+            if self.path == "/api/brass/seen":  # the browser played out Brass's walk to the board or the door
+                game.brass.seen_walk(str(payload.get("errand", "")))
+                return self._json(game.brass_state())
 
             if self.path == "/api/tick":
                 if game.cfg.tick_minutes <= 0 or guest:
