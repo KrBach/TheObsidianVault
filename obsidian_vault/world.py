@@ -229,7 +229,7 @@ class World:
                           f"y{r['rect'][1]}-{r['rect'][1] + r['rect'][3] - 1}" for r in world["rooms"])
         return "\n".join(lines + ["", f"Key: {legend}", f"Places: {', '.join(spots) or 'none'}",
                                   f"Rooms: {rooms}", f"You can place: {', '.join(MOVABLE)}",
-                                  "Not on this plan: the cat and the errand imp. They move about in the game itself, "
+                                  "Not on this plan: Vellum the cat and the errand imp. They move about in the game itself, "
                                   "so where the cat is comes with each message, in <game_state>."])
 
     # ---------- where Tally means to be ----------

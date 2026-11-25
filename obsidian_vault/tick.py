@@ -14,6 +14,7 @@ import time
 from datetime import datetime
 
 from .config import REPO_ROOT
+from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .moves import MoveLog
 
 SKETCH_FILE = REPO_ROOT / "context" / "tally-tick.md"
@@ -49,7 +50,7 @@ def nearby(world: dict, x: int, y: int) -> list[str]:
     return seen
 
 
-def build_prompt(world: dict, payload: dict, memory: str = "") -> str:
+def build_prompt(world: dict, payload: dict, memory: str = "", cat: str = "") -> str:
     tx, ty = _xy(payload.get("tally"), tuple(world.get("tally", (0, 0))))
     px, py = _xy(payload.get("player"), tuple(world.get("spawn", (0, 0))))
     room, proom = _room(world, tx, ty), _room(world, px, py)
@@ -75,6 +76,9 @@ def build_prompt(world: dict, payload: dict, memory: str = "") -> str:
     dist = max(abs(px - tx), abs(py - ty))
     lines.append(f"OWNER is at ({px},{py}) in {proom['name'] if proom else 'the vault'}, "
                  f"{dist} step(s) from you" + (" (same room)." if proom is room and room else "."))
+    if cat:
+        lines.append(cat + ' You may tend it with "cat": "pet", "feed", "play" or "call" (pet, feed and play only '
+                     'when it is right next to you); usually leave it alone.')
     talk = payload.get("talk") if isinstance(payload.get("talk"), list) else []
     recent = " ".join(str(payload.get("recent") or "").split())[:300]
     reply = " ".join(str(payload.get("recent_reply") or "").split())[:300]
@@ -134,6 +138,7 @@ def parse(reply: str, world: dict) -> dict:
         about = " ".join(str(data["think"].get("about") or "").split())[:300]
         if about:
             think = {"about": about, "why": " ".join(str(data["think"].get("why") or "").split())[:300]}
+    cat = str(data.get("cat") or "").strip().lower()
     spot = spots.get(go)
     if not spot:
         res = {"go": "stay", "at": None, "say": say, "why": why, "plan": plan, "rest": rest}
@@ -142,6 +147,8 @@ def parse(reply: str, world: dict) -> dict:
                "why": why, "plan": plan, "rest": rest}
     if think:
         res["think"] = think
+    if cat in CAT_ACTIONS:
+        res["tend_cat"] = cat
     return res
 
 
@@ -265,6 +272,7 @@ class Ticker:
         self.lock = threading.Lock()
         self.thoughts = Thoughts(cfg, errands)
         self.last_talk = LastTalk(cfg.state_dir)
+        self.cat = Cat(cfg.state_dir)
         self.moves = MoveLog(cfg.state_dir, getattr(cfg, "timezone", ""), getattr(cfg, "fill", None))
         try:
             self.sketch = SKETCH_FILE.read_text(encoding="utf-8")
@@ -278,7 +286,12 @@ class Ticker:
             return {"go": "stay", "at": None, "say": "", "skipped": "busy"}
         try:
             payload = {**payload, "talk": self.last_talk.get(), "thought": self.thoughts.note_for_tick()}
-            prompt = build_prompt(world, payload, self.moves.for_prompt(4))
+            if isinstance(payload.get("cat"), dict):
+                try:
+                    self.cat.save(payload["cat"])
+                except CatError:
+                    pass
+            prompt = build_prompt(world, payload, self.moves.for_prompt(4), self.cat.for_prompt(payload.get("tally")))
             fill = getattr(self.cfg, "fill", lambda t: t)
             reply = self.brain.muse(fill(self.sketch), fill(prompt), self.cfg.tick_model)
         except Exception as e:  # a failed tick just means Tally stays put
@@ -287,6 +300,14 @@ class Ticker:
             self.lock.release()
         res = parse(reply, world)
         think = res.pop("think", None)
+        action = res.pop("tend_cat", None)
+        if action:  # the same rules as the tool: next to it, and the cat decides how it takes it
+            try:
+                done = self.cat.tend("tally", action, payload.get("tally"))
+            except CatError:
+                done = None
+            if done and done.get("ok"):
+                res["cat"] = done
         if think and self.thoughts.start(think):
             res["thinking"] = think["about"]
         # Write the choice down in Tally's own words, so the conversation and the next tick remember it.

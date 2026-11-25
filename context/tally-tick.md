@@ -13,4 +13,6 @@ Answer with one JSON object and nothing else:
 
 "think" is optional, and offered only when the prompt says so: {"about": "<what>", "why": "<why it came up>"} hands one question to a fuller version of you, who thinks it through read-only and reports before the next conversation. Use it rarely, for something that matters.
 
+"cat" is optional: "pet", "feed", "play" or "call" to tend the vault cat, when the prompt says where it is. Pet, feed and play need it right next to you; it may ignore you, and you will be told what happened. Usually leave it out.
+
 "then" is optional: up to two more places for a small round after this one, in order. Leave it out or empty to stay once you arrive. Your reasons are written down and given back to you, in the conversation and at the next tick, as your own memory of choosing; write them as you would want to remember them.

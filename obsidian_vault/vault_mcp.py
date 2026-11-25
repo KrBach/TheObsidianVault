@@ -15,6 +15,7 @@ from .config import load_config
 from .board import Board, BoardError
 from .errands import Errands
 from .ledger import Ledger, LedgerError
+from .cat import Cat, CatError
 from .world import World, WorldError
 
 PROTOCOL = "2025-06-18"
@@ -234,6 +235,18 @@ GAME_TOOLS = [
         }, ["id", "name", "x", "y"]),
     },
     {
+        "name": "tend_cat",
+        "description": (
+            "Tend the vault cat: 'pet', 'feed', 'play' (a quill on a string) or 'call'. You must be next to it "
+            "(calling reaches across a room). The cat decides how it takes it: asleep it only blinks, it plays only "
+            "when playful, and a pet can end with it walking off. The answer is what happened; OWNER sees it when "
+            "your reply ends. Never say you petted, fed or played with the cat without this tool."
+        ),
+        "inputSchema": _schema({
+            "action": {**S, "description": "pet, feed, play or call."},
+        }, ["action"]),
+    },
+    {
         "name": "forget_place",
         "description": "Remove a place you named earlier (built-in places stay).",
         "inputSchema": _schema({"id": S}, ["id"]),
@@ -264,6 +277,13 @@ def call_game(world: World, name: str, args: dict) -> str:
         return world.name_place(args.get("id", ""), args.get("name", ""), args.get("x"), args.get("y"))
     if name == "forget_place":
         return world.forget_place(args.get("id", ""))
+    if name == "tend_cat":
+        saved = world.tally() or {}
+        try:
+            res = Cat(world.state).tend("tally", args.get("action", ""), saved, queue=True)
+        except CatError as e:
+            raise WorldError(str(e))
+        return res["text"] + (" OWNER sees it when your reply ends." if res["ok"] else "")
     raise WorldError(f"unknown tool {name}")
 
 

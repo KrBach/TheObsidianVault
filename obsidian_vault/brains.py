@@ -48,6 +48,7 @@ TOOL_FLAVOUR = {
     "mcp__vault__clear_furniture": "Tally clears a space",
     "mcp__vault__name_place": "Tally pencils a new name onto the plan",
     "mcp__vault__forget_place": "Tally rubs out a name on the plan",
+    "mcp__vault__tend_cat": "Tally turns to the cat",
 }
 
 VAULT_TOOLS = [
@@ -78,6 +79,7 @@ GAME_TOOLS = [
     "mcp__vault__clear_furniture",
     "mcp__vault__name_place",
     "mcp__vault__forget_place",
+    "mcp__vault__tend_cat",
 ]
 
 
