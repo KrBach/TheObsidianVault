@@ -114,6 +114,21 @@ def load_persona(cfg: Config) -> Persona:
     return Persona(system_prompt=system_prompt, loaded=loaded, missing=missing)
 
 
+GUEST_CONTEXT = Path(__file__).resolve().parent.parent / "context" / "tally-guest.md"
+
+
+def load_guest_persona(cfg: Config) -> Persona:
+    """Tally's public face, for a guest: none of the vault's private core (soul.md, bootstrap.md), no notes."""
+    text = GUEST_CONTEXT.read_text(encoding="utf-8") if GUEST_CONTEXT.is_file() else "You are Tally, the vault's archivist. A guest is visiting; keep Kristian's notes private."
+    return Persona(system_prompt=text, loaded=["tally-guest.md"], missing=[])
+
+
+def guest_shelves(cfg: Config) -> list[dict]:
+    """Shelf labels a guest sees: as many shelves as there are, none of their names or sizes."""
+    return [{"name": "a closed shelf" if s["name"] not in ("archive", "templates") else s["name"], "notes": 0}
+            for s in vault_shelves(cfg)]
+
+
 def vault_shelves(cfg: Config) -> list[dict]:
     """Theme folders in the vault, as shelf labels. Names and note counts only, never content."""
     if not cfg.core_dir or not cfg.core_dir.is_dir():

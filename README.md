@@ -26,6 +26,18 @@ python3 -m obsidian_vault
 
 It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so your vault path stays local.
 
+### Logging in
+
+The game opens at the door: come in as **Kristian** or as a **guest**.
+
+- **Kristian's password:** the first time, the door asks Kristian to choose one. Only a salted hash (PBKDF2) is kept, in `.vault-state/login.json`, never the password itself. To change it, run `python3 -m obsidian_vault.auth set-password`. This also logs everyone out.
+- **Staying logged in:** a login lasts 30 days in that browser, across restarts of the game. Use "Leave the vault" in the menu (Esc) to log out.
+- **A guest** can walk around, use the furniture, ring the bell and talk to Tally. Tally treats them as a visitor:
+  - **Tally for a guest** has no private core (no `soul.md`, no `bootstrap.md`). It has only the public description in `context/tally-guest.md`, no tools at all (no notes, no web, no vault or game tools) and a conversation of its own. It runs in a scratch folder outside the vault.
+  - **Closed to guests:** the ledger, the notice board and errands. Shelf labels show only as "a closed shelf", without theme names or note counts. Tally's reasons for being where they are stay hidden too.
+  - **What a guest leaves behind:** nothing. A guest's visit does not move Tally for Kristian's next session, does not run Tally's ticks, and is not written to the moves journal or the vault.
+- **Who can reach the game:** it only listens on this machine (`127.0.0.1`), so a guest has to sit at your computer.
+
 ### Tally's brain
 
 Set `brain.kind` in `config.toml`:

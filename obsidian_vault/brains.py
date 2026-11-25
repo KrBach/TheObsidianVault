@@ -156,6 +156,9 @@ class ClaudeCodeBrain(Brain):
         self.session_id = None
         self._save_session()
 
+    def _cwd(self):
+        return self.cfg.core_dir if self.cfg.core_dir and self.cfg.core_dir.is_dir() else None
+
     def _tools(self) -> list[str]:
         tools = list(self.cfg.tools)
         if self.cfg.web:
@@ -189,7 +192,7 @@ class ClaudeCodeBrain(Brain):
         if not self.exe:
             yield {"type": "error", "text": CLAUDE_MISSING}
             return
-        cwd = self.cfg.core_dir if self.cfg.core_dir and self.cfg.core_dir.is_dir() else None
+        cwd = self._cwd()
         with self.lock:
             proc = subprocess.Popen(
                 self._command(), cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -261,6 +264,40 @@ class ClaudeCodeBrain(Brain):
         return str(out.get("result") or "")
 
 
+class GuestClaudeBrain(ClaudeCodeBrain):
+    """Tally for a guest: no tools at all, no vault tools, run outside the vault, its own conversation."""
+
+    name = "claude-code (guest)"
+
+    def __init__(self, cfg: Config, persona: Persona):
+        self.cfg = cfg
+        self.persona = persona
+        self.lock = threading.Lock()
+        self.exe = cfg.claude_path
+        self.writes = False
+        self.session_file = cfg.state_dir / "guest-session.json"
+        self.session_id = self._load_session()
+
+    def _cwd(self):
+        # Outside the vault and the repo: nothing to read, and no CLAUDE.md is loaded.
+        d = self.cfg.state_dir / "guest-room"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _command(self) -> list[str]:
+        cmd = [
+            self.exe or "claude", "-p",
+            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+            "--system-prompt", self.persona.system_prompt,
+            "--tools", "", "--strict-mcp-config", "--permission-mode", "dontAsk",
+        ]
+        if self.cfg.model:
+            cmd += ["--model", self.cfg.model]
+        if self.session_id:
+            cmd += ["--resume", self.session_id]
+        return cmd
+
+
 class ApiBrain(Brain):
     """Calls the Claude API directly. Keeps the conversation in memory."""
 
@@ -330,6 +367,12 @@ class ApiBrain(Brain):
             model=self.MODELS.get(model, model or self.model), max_tokens=200,
             system=system, messages=[{"role": "user", "content": prompt}])
         return "".join(b.text for b in msg.content if b.type == "text")
+
+
+def make_guest_brain(cfg: Config, persona: Persona) -> Brain:
+    if cfg.brain == "api":
+        return ApiBrain(cfg, persona)  # the API brain has no tools anyway
+    return GuestClaudeBrain(cfg, persona)
 
 
 def make_brain(cfg: Config, persona: Persona) -> Brain:
