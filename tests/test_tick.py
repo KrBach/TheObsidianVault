@@ -118,5 +118,68 @@ class TickTest(unittest.TestCase):
         self.assertEqual(len(log.recent()), 2)  # a two-day-old move is not handed back
 
 
+    def test_last_talk_survives_a_reload(self):
+        cfg = Cfg()
+        brain = FakeBrain('{"go": "stay"}')
+        t = Ticker(cfg, brain)
+        t.last_talk.add("shall we look at the map room later?", "Yes. After the ledger.")
+        t.last_talk.add("good, I'll be back", "I'll be at the desk.")
+        t.last_talk.add("one more", "x" * 400)
+        t.tick(self.w, {})  # the page was reloaded: nothing about the talk in the payload
+        prompt = brain.calls[-1][1]
+        self.assertIn("The end of your last conversation", prompt)
+        self.assertIn("good, I'll be back", prompt)
+        self.assertIn("one more", prompt)
+        self.assertNotIn("map room later", prompt)  # only the last two exchanges
+        self.assertNotIn("x" * 301, prompt)
+
+    def test_think_harder_starts_one_counted_research_errand(self):
+        class FakeErrands:
+            def __init__(self):
+                self.started, self.recs = [], {}
+
+            def start(self, op):
+                self.started.append(op)
+                self.recs[op["id"]] = {"status": "running"}
+
+            def get(self, eid):
+                return self.recs.get(eid)
+
+        cfg = Cfg()
+        cfg.thoughts_per_day, cfg.errands, cfg.claude_path, cfg.writes_mode = 2, True, "/bin/claude", "review"
+        errands = FakeErrands()
+        reply = '{"go": "stay", "think": {"about": "whether the Archive needs an index", "why": "it came up"}}'
+        brain = FakeBrain(reply)
+        t = Ticker(cfg, brain, errands)
+        res = t.tick(self.w, {})
+        self.assertIn("think", brain.calls[-1][1])  # offered in the prompt
+        self.assertEqual(res["thinking"], "whether the Archive needs an index")
+        self.assertNotIn("think", res)
+        op = errands.started[0]
+        self.assertEqual((op["errand_kind"], op["self_started"]), ("research", True))
+        self.assertIn("whether the Archive needs an index", op["brief"])
+        # one at a time: while it runs, no second thought, and the prompt says so
+        res = t.tick(self.w, {})
+        self.assertNotIn("thinking", res)
+        self.assertIn("already thinking harder", brain.calls[-1][1])
+        self.assertEqual(len(errands.started), 1)
+        # a day's limit
+        errands.recs[op["id"]]["status"] = "done"
+        t.tick(self.w, {})
+        for r in errands.recs.values():
+            r["status"] = "done"
+        res = t.tick(self.w, {})
+        self.assertEqual(len(errands.started), 2)
+        self.assertNotIn("thinking", res)
+        saved = json.loads((cfg.state_dir / "thoughts.json").read_text())
+        self.assertEqual(saved["total"], 2)
+        # off, or with writes off, a tick is never offered the choice
+        cfg2 = Cfg()
+        cfg2.thoughts_per_day, cfg2.errands, cfg2.claude_path, cfg2.writes_mode = 3, True, "/bin/claude", "off"
+        brain2 = FakeBrain(reply)
+        self.assertNotIn("thinking", Ticker(cfg2, brain2, FakeErrands()).tick(self.w, {}))
+        self.assertNotIn('"think"', brain2.calls[-1][1])
+
+
 if __name__ == "__main__":
     unittest.main()

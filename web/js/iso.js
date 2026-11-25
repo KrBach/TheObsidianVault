@@ -226,6 +226,21 @@ export class IsoRenderer {
     return null;
   }
 
+  // The notice board stands up against the wall behind its tile: a point on the board picks its cell.
+  pickTall(mx, my) {
+    if (!this.origin) return null;
+    const wx = (mx - this.origin[0]) / this.zoom;
+    const wy = (my - this.origin[1]) / this.zoom;
+    const { map, legend } = this.world;
+    this.tall ||= map.flatMap((row, y) => [...row].flatMap((ch, x) =>
+      this.isoOf(legend[ch]).shape === "noticeboard" ? [{ x, y, h: this.isoOf(legend[ch]).h || 44 }] : []));
+    for (const b of this.tall) {
+      const [sx, sy] = IsoRenderer.toScreen(b.x, b.y);
+      if (wx >= sx - TW / 2 && wx <= sx + 2 && wy >= sy - TH / 2 - b.h - 4 && wy <= sy + 2) return { x: b.x, y: b.y };
+    }
+    return null;
+  }
+
   // ---------- primitives ----------
 
   diamond(cx, cy, w, h) {
@@ -519,6 +534,54 @@ export class IsoRenderer {
         c.stroke();
         c.globalAlpha = 1;
         c.lineWidth = 1;
+        break;
+      }
+
+      case "noticeboard": {
+        // A cork board on two posts along the cell's north-west edge, facing the room. Papers are
+        // pinned to it, one per thing on the notice board (up to six); a red pin marks something new.
+        const f = 0.92, L = [sx - (TW * f) / 2, sy], T = [sx, sy - (TH * f) / 2];
+        const at = (u, h) => [L[0] + (T[0] - L[0]) * u, L[1] + (T[1] - L[1]) * u - h];
+        const quad = (u0, u1, h0, h1) => {
+          c.beginPath();
+          c.moveTo(...at(u0, h0)); c.lineTo(...at(u1, h0)); c.lineTo(...at(u1, h1)); c.lineTo(...at(u0, h1));
+          c.closePath();
+        };
+        const top = cut ? 12 : h, low = Math.min(12, top - 4);
+        c.globalAlpha = alpha;
+        c.strokeStyle = rgb(base, light, 0.6);
+        c.lineWidth = 3;
+        for (const u of [0.08, 0.92]) {
+          const [a, b] = [at(u, 0), at(u, top + 2)];
+          c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke();
+        }
+        c.lineWidth = 1;
+        c.fillStyle = rgb(base, light, 0.9); // the frame
+        quad(0, 1, low, top);
+        c.fill();
+        c.fillStyle = rgb(this.col(iso.cork || "#8a6438"), light, 0.85); // the cork
+        quad(0.06, 0.94, low + 2, top - 2);
+        c.fill();
+        const pins = cut ? { count: 0 } : this.world.boardPapers?.() || { count: 0 };
+        const n = Math.min(6, pins.count || 0);
+        for (let i = 0; i < n; i++) {
+          const col = i % 3, row = Math.floor(i / 3);
+          const u0 = 0.12 + col * 0.27 + (hash(x + i, y) - 0.5) * 0.04;
+          const h1 = top - 5 - row * 14 - hash(x, y + i) * 2;
+          c.fillStyle = rgb([226, 216, 192], light, 0.95 - 0.06 * (i % 2));
+          quad(u0, u0 + 0.2, h1 - 11, h1);
+          c.fill();
+          c.strokeStyle = rgb([120, 110, 96], light, 0.8); // a line or two of writing
+          c.beginPath();
+          for (const k of [3.5, 6.5]) { c.moveTo(...at(u0 + 0.03, h1 - k)); c.lineTo(...at(u0 + 0.16, h1 - k)); }
+          c.stroke();
+          const newest = i === n - 1 && pins.fresh;
+          const [px, py] = at(u0 + 0.1, h1 - 1);
+          c.fillStyle = newest ? "#e04a3a" : rgb([180, 160, 120], light, 1);
+          c.beginPath(); c.arc(px, py, newest ? 1.8 : 1.2, 0, Math.PI * 2); c.fill();
+          if (newest) this.glow(px, py, 7 + 2 * Math.sin(t * 3), [230, 80, 60], 0.35);
+        }
+        c.globalAlpha = 1;
         break;
       }
 

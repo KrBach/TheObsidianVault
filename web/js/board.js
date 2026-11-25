@@ -10,6 +10,19 @@ let isOpenFlag = false;
 let onLog = () => {};
 const known = new Map(); // errand id -> last status seen, to announce finished errands once
 let polling = null;
+const SEEN_KEY = "vault-board-seen";
+let seen = null; // newest 'updated' time the owner has seen on the board (kept in this browser)
+
+function newest() { return items.reduce((m, it) => Math.max(m, Number(it.updated) || 0), 0); }
+function markSeen() {
+  seen = newest();
+  try { localStorage.setItem(SEEN_KEY, String(seen)); } catch { /* private mode */ }
+}
+
+// What the board in the Entrance Hall shows: one paper per item, and whether something is new.
+export function papers() {
+  return { count: items.length, fresh: seen !== null && newest() > seen };
+}
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -88,6 +101,11 @@ export async function refresh() {
   try {
     items = (await (await fetch("/api/board")).json()).items || [];
   } catch { items = []; }
+  if (seen === null) {
+    try { seen = Number(localStorage.getItem(SEEN_KEY)) || null; } catch { /* private mode */ }
+    if (seen === null) markSeen(); // the first visit: what is already up is not news
+  }
+  if (isOpenFlag) markSeen();
   renderList();
 }
 
@@ -132,5 +150,6 @@ export function initBoard(log) {
   $("board-open").addEventListener("click", open);
   window.addEventListener("vault:errands", () => setTimeout(checkErrands, 1000));
   refresh();
+  setInterval(refresh, 120000); // new pages and pinned links show on the board in the hall
   checkErrands();
 }

@@ -34,6 +34,11 @@ context_file = "context/the-vault-game.md"
 # Ticks pause while the tab is hidden and after 30 minutes without input from you.
 tick_minutes = 6
 tick_model = "haiku"
+# A tick may flag one thing it wants to think harder about. The game then starts a small
+# read-only research errand for it without asking (a full model reads the vault and the web and
+# writes nothing); Tally hears the result in the next conversation and it goes on the notice board.
+# At most one at a time, and at most this many a day. 0 turns it off.
+thoughts_per_day = 3
 
 [brain]
 # "claude-code" (default): runs `claude -p` with your Claude Code login. No API key, no packages.

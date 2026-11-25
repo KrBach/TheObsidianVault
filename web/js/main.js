@@ -312,6 +312,7 @@ function walkTo(x, y) {
   } else if (t.def.solid) {
     goals = neighbours(x, y);
     if (t.id === "bell") onArrive = ringBell;
+    else if (t.id === "notice_board") onArrive = readBoard;
     else if (t.id !== "wall") onArrive = () => log(describe(x, y));
   } else {
     goals = [[x, y]];
@@ -598,6 +599,7 @@ async function tallyChooses() {
   }
   if (!res || state.busy || state.talking) return;
   const mine = roomAt(state.player.x, state.player.y), theirs = roomAt(t.x, t.y);
+  if (res.thinking) log(`Tally goes quiet for a moment, turning something over: ${res.thinking}. A runner sets off with the question; you will hear what came of it.`, "action");
   if (res.say) {
     const line = logLine(mine === theirs ? "Tally" : `Tally (in ${theirs ? theirs.name : "the vault"})`, "tally");
     line.textContent = res.say;
@@ -707,6 +709,7 @@ function move(dx, dy) {
   if (!t || !t.def) return;
   if (t.def.solid) {
     if (t.id === "bell") return ringBell();
+    if (t.id === "notice_board") return readBoard();
     if (t.id !== "wall") log(describe(nx, ny));
     return;
   }
@@ -860,6 +863,7 @@ function ctxOptions(x, y) {
   const occupied = x === state.tally.x && y === state.tally.y;
   if (!occupied && (t.def.desc || t.id.includes("shelf"))) opts.push([`Inspect ${theName(t)}`, () => log(describe(x, y))]);
   if (t.id === "bell") opts.push(["Ring the bell", () => walkTo(x, y)]);
+  if (t.id === "notice_board") opts.push(["Read the notice board", () => walkTo(x, y)]);
   if (t.id.startsWith("desk") && state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1]) {
     opts.push(["Talk to Tally across the desk", () => walkTo(x, y)]);
   }
@@ -925,6 +929,12 @@ $("m-character").addEventListener("click", () => { closeMenu(); character.open()
 character.initCharacter();
 
 function openBoard() { return isGuest() ? forOwner("notice board") : board.open(); }
+// Walking up to the board in the Entrance Hall
+function readBoard() {
+  if (isGuest()) return log("A cork board by the way in. The papers pinned to it face the wall while a guest is here.");
+  log("You look over the notice board.", "action");
+  openBoard();
+}
 function openLedger() {
   if (isGuest()) return forOwner("ledger");
   if (!ledger.openList()) log("Writing is off in config.toml, so the ledger stays shut.");
@@ -1052,7 +1062,7 @@ async function boot() {
   const cellAt = (ev) => {
     const r = canvas.getBoundingClientRect(), rd = renderers[state.view];
     const mx = ev.clientX - r.left, my = ev.clientY - r.top;
-    return rd.pickFigure?.(mx, my, [state.tally]) || rd.pick(mx, my);
+    return rd.pickFigure?.(mx, my, [state.tally]) || rd.pickTall?.(mx, my) || rd.pick(mx, my);
   };
   canvas.addEventListener("mousemove", (ev) => {
     const c = cellAt(ev);
@@ -1117,7 +1127,7 @@ async function boot() {
 
   state.writes = st.writes || "off";
   ledger.initLedger(state.writes, log);
-  if (!isGuest()) board.initBoard(log);
+  if (!isGuest()) { board.initBoard(log); w.boardPapers = board.papers; }
   $("menu-status").append(` · writing: ${state.writes}` + (Number(st.tick_minutes) > 0 ? ` · Tally chooses every ${st.tick_minutes} min` : ""));
 
   log("You push open the heavy glass door and step into the vault.");

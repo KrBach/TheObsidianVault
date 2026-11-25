@@ -33,7 +33,7 @@ class Game:
         self.board = Board(cfg)
         self.ledger = Ledger(cfg, on_errand=self.errands.start)
         self.moves = MoveLog(cfg.state_dir, cfg.timezone, cfg.fill)
-        self.ticker = Ticker(cfg, self.brain)
+        self.ticker = Ticker(cfg, self.brain, self.errands)
         self.layout = World(cfg.state_dir)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
@@ -268,7 +268,7 @@ def make_handler(game: Game):
             if self.path != "/api/talk":
                 return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
-            text = str(payload.get("text", "")).strip()
+            text = said = str(payload.get("text", "")).strip()
             if not text:
                 return self._json({"error": "empty message"}, HTTPStatus.BAD_REQUEST)
             where = str(payload.get("where", "")).strip()[:1000]
@@ -286,9 +286,9 @@ def make_handler(game: Game):
                         f"choices and your reasons.\n{memory}\n</your_recent_moves>\n{text}")
             if where:
                 text = f"<game_state>{where}</game_state>\n{text}"
-            return self._stream(game.brain, text)
+            return self._stream(game.brain, text, said=said)
 
-        def _stream(self, brain: Brain, text: str, guest: bool = False):
+        def _stream(self, brain: Brain, text: str, guest: bool = False, said: str = ""):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -296,9 +296,13 @@ def make_handler(game: Game):
             layout_before = game.layout.version()
             if not guest:
                 game.layout.take_intent()  # an old intent from a reply that never finished does not count
+            reply = []
             try:
                 for event in brain.talk(text):
+                    if event.get("type") == "delta":
+                        reply.append(event.get("text", ""))
                     if event.get("type") == "done" and not guest:
+                        game.ticker.last_talk.add(said, "".join(reply))  # the next tick builds on it
                         # Tally's tools said where to be, or changed the room: tell the game before closing.
                         intent = game.layout.take_intent()
                         if intent:
