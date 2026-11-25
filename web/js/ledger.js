@@ -1,10 +1,11 @@
-// The ledger panel: changes Tally wants to make to the vault, waiting for Kristian.
-// Nothing is written until he approves a change here.
+// The ledger: changes Tally wants to make to the vault, waiting for Kristian. A '!' in the top bar
+// shows when something waits; it opens the list over the map. Nothing is written until he approves.
 
 const $ = (id) => document.getElementById(id);
 let items = [];
 let open = null;
 let onLog = () => {};
+let enabled = false;
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -22,7 +23,8 @@ function kindLabel(op) {
 function renderList(mode, size) {
   const list = $("ledger-list");
   list.replaceChildren();
-  $("ledger-count").textContent = items.length ? `${items.length} waiting` : "";
+  $("ledger-count").textContent = items.length > 1 ? String(items.length) : "";
+  $("ledger-flag").hidden = !items.length;
   if (!items.length) {
     list.append(el("div", "dim", mode === "direct"
       ? "Nothing waiting. Log lines are written at once; note changes wait here."
@@ -53,6 +55,7 @@ function show(id) {
   const op = items.find((o) => o.id === id);
   if (!op) return close();
   open = id;
+  $("ledger-pop").hidden = true;
   const box = $("review");
   box.hidden = false;
   $("review-title").textContent = `${kindLabel(op)} · ${op.file}`;
@@ -64,11 +67,24 @@ function show(id) {
 }
 
 export function close() {
+  const was = open;
   open = null;
   $("review").hidden = true;
+  // back to the list if more pages wait; otherwise close everything
+  if (was && items.some((o) => o.id !== was)) openList();
+  else $("ledger-pop").hidden = true;
 }
 
-export function isOpen() { return open !== null; }
+export function openList() {
+  if (!enabled) return false;
+  open = null;
+  $("review").hidden = true;
+  $("ledger-pop").hidden = false;
+  refresh();
+  return true;
+}
+
+export function isOpen() { return open !== null || !$("ledger-pop").hidden; }
 
 async function decide(action) {
   if (!open) return;
@@ -80,7 +96,11 @@ async function decide(action) {
     if (data.ok) {
       onLog(action === "approve" ? `You sign the ledger. ${data.message}` : "You strike the entry out. Nothing was written.", "action");
       if (action === "approve") window.dispatchEvent(new CustomEvent("vault:errands"));
-      close();
+      open = null;
+      $("review").hidden = true;
+      await refresh();
+      if (items.length) openList();
+      return;
     } else {
       $("review-msg").textContent = data.error;
     }
@@ -106,7 +126,9 @@ export async function refresh() {
 export function initLedger(mode, log) {
   onLog = log;
   if (mode === "off") return;
-  $("ledger").hidden = false;
+  enabled = true;
+  $("ledger-flag").addEventListener("click", openList);
+  $("ledger-close").addEventListener("click", () => { $("ledger-pop").hidden = true; });
   $("review-approve").addEventListener("click", () => decide("approve"));
   $("review-reject").addEventListener("click", () => decide("reject"));
   $("review-close").addEventListener("click", close);

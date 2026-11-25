@@ -50,7 +50,7 @@ Set `writes.mode` in `config.toml`:
 
 | mode | what happens |
 | --- | --- |
-| `review` (default) | every change waits for you in the **ledger** panel; click one to see the diff, then approve or reject |
+| `review` (default) | every change waits for you in the **ledger**: a yellow `!` in the top bar shows when something waits (or press `p`); click an entry to see the diff, then approve or reject |
 | `direct` | log and coaching lines are written at once; note edits and new notes still wait for you |
 | `off` | nothing is written; Tally is told the session is read-only |
 
@@ -70,7 +70,7 @@ The conversation itself stays small and read-only. Bigger jobs go out as **erran
 
 For large tasks Tally holds a short **meeting** first (goal, what done looks like, limits, cost) and reads the brief back before queuing it. You can call one yourself, for example at the map table.
 
-The **notice board** (`b`, or the panel on the right) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
+The **notice board** (`b`, or the board button in the top bar) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
 
 ## Furniture: sitting, lying down, walking in place
 
@@ -85,14 +85,16 @@ Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.js
 | Input | Action |
 | --- | --- |
 | click | walk there; click Tally to walk up and talk, click a shelf to read its label |
+| right-click | a menu for that spot: inspect it, look around the room, sit or lie down on furniture or the floor, ring the bell, talk to or look at Tally. What you learn appears in the text box |
 | arrows, `wasd`, `hjkl` | one step along the floor grid (in the isometric view these follow the floor's diagonals) |
 | `t` or Enter | talk, when next to Tally |
-| Esc | step away from the desk |
+| Esc | step away from the desk; otherwise open the menu (settings, controls, status). `m` opens it too |
 | `v` | switch between the isometric and the ASCII view |
 | mouse wheel | zoom (isometric view) |
 | `n` | start a new conversation |
 | `e` | enlarge the talk box for long answers |
 | `b` | open the notice board (replaces the `b` diagonal step) |
+| `p` | open the ledger |
 | `x` / `z` | sit / lie down (again to get up) |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 

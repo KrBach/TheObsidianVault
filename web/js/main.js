@@ -114,7 +114,8 @@ function describe(x, y) {
     if (!s) return t.def.name;
     return s.notes ? `${t.def.name}: ${s.label} (${s.notes} notes)` : `${t.def.name}: ${s.label}`;
   }
-  return t.def.desc ? `${t.def.name}. ${t.def.desc}` : t.def.name;
+  const name = t.def.name[0].toUpperCase() + t.def.name.slice(1);
+  return t.def.desc ? `${name}. ${t.def.desc}` : name;
 }
 
 // Close enough to talk: next to Tally, or across the desk.
@@ -134,27 +135,41 @@ function talkSpots() {
   return spots;
 }
 
-function updateSide() {
-  const { x, y } = state.player;
-  const room = roomAt(x, y);
-  $("room-name").textContent = room ? room.name : "Somewhere in the vault";
-  $("room-desc").textContent = room ? room.desc : "";
-
-  const near = new Set();
-  if (inTalkRange(state.player, state.tally)) near.add("Tally is right here. Press t to talk.");
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      if (!dx && !dy) continue;
-      const t = tileAt(x + dx, y + dy);
-      if (t?.def && !["floor", "floor_glint", "wall"].includes(t.id)) {
-        const d = t.id.includes("shelf") ? describe(x + dx, y + dy) : t.def.name;
-        if (d) near.add(d);
-      }
-    }
+// What you notice looking around a room: its description, the things in it, and who is there.
+const PLAIN = new Set(["floor", "floor_glint", "wall", "door", "doorway"]);
+function lookAround(room) {
+  if (!room) return log("A passage between rooms. Bare stone, and the hum of the vault.");
+  log(room.name, "room-name");
+  if (room.desc) log(room.desc);
+  const [rx, ry, w, h] = room.rect;
+  const things = new Map();
+  for (let y = ry; y < ry + h; y++) for (let x = rx; x < rx + w; x++) {
+    const t = tileAt(x, y);
+    if (!t?.def || PLAIN.has(t.id)) continue;
+    const label = t.id.includes("shelf") && state.shelfAt.get(`${x},${y}`)?.label;
+    const name = label ? `a shelf of ${label}` : /^(the |tally's )/i.test(t.def.name) ? t.def.name : `${/^[aeiou]/i.test(t.def.name) ? "an" : "a"} ${t.def.name}`;
+    things.set(name, (things.get(name) || 0) + 1);
   }
-  const nearby = $("nearby");
-  nearby.replaceChildren(...[...near].map((s) => Object.assign(document.createElement("div"), { textContent: s })));
-  if (!near.size) nearby.innerHTML = '<span class="dim">nothing of note</span>';
+  const list = [...things.keys()].slice(0, 14);
+  if (list.length) log(`You see ${list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}` : list[0]}.`);
+  if (roomAt(state.tally.x, state.tally.y) === room) log(`Tally is here, ${tallyNow()}.`, "action");
+}
+
+// What Tally is doing, told to Kristian (doingText() is the same, told to Tally).
+function tallyNow() {
+  const t = state.tally, d = t.doing || {};
+  if (d.kind === "follow") return "walking with you";
+  if (t.path?.length) return d.kind === "go" && d.name ? `on their way, ${d.name}` : "walking";
+  if (t.pose) return poseText(t);
+  if (t.x === state.world.tally[0] && t.y === state.world.tally[1]) return "at their desk in the Hearth";
+  const r = roomAt(t.x, t.y);
+  return `standing in ${r ? r.name : "the vault"}`;
+}
+
+function lookAtTally() {
+  const t = state.tally;
+  log(`Tally: the vault's archivist, in a plain dark coat, ink on their fingers, the ledger under one arm. ` +
+    `Tally is ${tallyNow()}.`);
 }
 
 // ---------- walking ----------
@@ -640,12 +655,12 @@ function move(dx, dy) {
     // Say it once per visit, not every time you step back and forth across a doorway.
     const now = performance.now();
     const seen = (state.announced ||= {});
-    if (!seen[after.name] || now - seen[after.name] > 30000) log(`You enter ${after.name}.`);
+    if (!seen[after.name]) { log(`You enter ${after.name}.`, "room-name"); if (after.desc) log(after.desc); }
+    else if (now - seen[after.name] > 30000) log(`You enter ${after.name}.`);
     seen[after.name] = now;
   }
   if (nx === state.world.exit[0] && ny === state.world.exit[1]) log("The way out. Close the tab to leave; Tally keeps the ledger.");
   if (t.id === "papers" || t.id === "mat") log(describe(nx, ny));
-  updateSide();
 }
 
 function startTalking() {
@@ -743,6 +758,110 @@ async function say(text) {
   if (state.talking) input.focus();
 }
 
+// ---------- right-click menu and the game menu ----------
+// Right-click on the map: what you can do with that spot. Whatever you learn goes to the text box below.
+
+const theName = (t) => (/^(the |tally's )/i.test(t.def.name) ? t.def.name : `the ${t.def.name}`);
+const POSE_VERB = { sit: "Sit", lie: "Lie down", walk: "Walk" };
+
+function restAt(x, y, how) {
+  const p = state.player;
+  if (state.talking) stopTalking();
+  if (p.x === x && p.y === y) { p.declined = null; return setPose(p, how); }
+  if (x === state.tally.x && y === state.tally.y) return log("Tally is there.");
+  const path = findPath([[x, y]]);
+  if (path === null) return log("You can't find a way there.");
+  p.wantPose = how;
+  state.path = path;
+  state.onArrive = null;
+}
+
+function ctxOptions(x, y) {
+  const t = tileAt(x, y);
+  if (!t?.def) return null;
+  const p = state.player, room = roomAt(x, y), opts = [];
+  const here = p.x === x && p.y === y;
+  let head;
+  if (x === state.tally.x && y === state.tally.y) {
+    head = "Tally";
+    opts.push(["Talk to Tally", () => walkTo(x, y)], ["Look at Tally", lookAtTally]);
+  } else if (here) {
+    head = p.pose ? `You, ${POSE_WORD[p.pose.how]}` : "You";
+    if (p.pose) opts.push(["Get up", () => { p.declined = `${p.x},${p.y}`; setPose(p, null); }]);
+  } else {
+    head = t.id.includes("shelf") ? describe(x, y) : t.def.name;
+  }
+  const occupied = x === state.tally.x && y === state.tally.y;
+  if (!occupied && (t.def.desc || t.id.includes("shelf"))) opts.push([`Inspect ${theName(t)}`, () => log(describe(x, y))]);
+  if (t.id === "bell") opts.push(["Ring the bell", () => walkTo(x, y)]);
+  if (t.id.startsWith("desk") && state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1]) {
+    opts.push(["Talk to Tally across the desk", () => walkTo(x, y)]);
+  }
+  if (t.def.use && !occupied) {
+    for (const how of t.def.use.poses) {
+      if (here && p.pose?.how === how) continue;
+      const on = t.id === "hammock" ? "in" : "on";
+      opts.push([`${POSE_VERB[how]} ${on} ${theName(t)}`, () => restAt(x, y, how)]);
+    }
+  } else if (!occupied && canPose(x, y, "sit")) {
+    if (!(here && p.pose?.how === "sit")) opts.push([here ? "Sit down here" : "Sit on the floor there", () => restAt(x, y, "sit")]);
+    if (!(here && p.pose?.how === "lie")) opts.push([here ? "Lie down here" : "Lie down there", () => restAt(x, y, "lie")]);
+  }
+  if (!here && !occupied && !t.def.solid) opts.push(["Walk here", () => walkTo(x, y)]);
+  opts.push([room ? (room === roomAt(p.x, p.y) ? "Look around the room" : `Look around ${room.name}`) : "Look around", () => lookAround(room)]);
+  return { head, opts };
+}
+
+const ctxEl = $("ctx");
+function hideCtx() { ctxEl.hidden = true; ctxEl.replaceChildren(); }
+
+function showCtx(clientX, clientY, x, y) {
+  const menu = ctxOptions(x, y);
+  if (!menu) return hideCtx();
+  ctxEl.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "ctx-head";
+  head.textContent = menu.head;
+  ctxEl.append(head);
+  for (const [label, act] of menu.opts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", () => { hideCtx(); act(); });
+    ctxEl.append(b);
+  }
+  ctxEl.hidden = false;
+  const box = $("view").getBoundingClientRect();
+  const left = Math.min(clientX - box.left, box.width - ctxEl.offsetWidth - 4);
+  const top = Math.min(clientY - box.top, box.height - ctxEl.offsetHeight - 4);
+  ctxEl.style.left = `${Math.max(4, left)}px`;
+  ctxEl.style.top = `${Math.max(4, top)}px`;
+  ctxEl.querySelector("button")?.focus({ preventScroll: true });
+}
+
+const menuEl = $("menu");
+const menuOpen = () => !menuEl.hidden;
+function openMenu() {
+  hideCtx();
+  if (state.talking) stopTalking();
+  menuEl.hidden = false;
+}
+function closeMenu() { menuEl.hidden = true; }
+$("menu-open").addEventListener("click", () => (menuOpen() ? closeMenu() : openMenu()));
+$("menu-close").addEventListener("click", closeMenu);
+$("m-view").addEventListener("click", () => setView(state.view === "iso" ? "ascii" : "iso"));
+$("m-tall").addEventListener("click", () => { closeMenu(); toggleTall(); });
+$("m-new").addEventListener("click", () => { closeMenu(); newConversation(); });
+$("m-board").addEventListener("click", () => { closeMenu(); board.open(); });
+$("m-ledger").addEventListener("click", () => {
+  closeMenu();
+  if (!ledger.openList()) log("Writing is off in config.toml, so the ledger stays shut.");
+});
+
+function newConversation() {
+  resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
+}
+
 // ---------- input ----------
 
 const KEYS = {
@@ -755,6 +874,14 @@ const KEYS = {
 
 window.addEventListener("keydown", (e) => {
   touched();
+  if (!ctxEl.hidden) {
+    if (e.key === "Escape") { e.preventDefault(); hideCtx(); }
+    return; // arrows and Enter work the menu's buttons
+  }
+  if (menuOpen()) {
+    if (e.key === "Escape" || e.key === "m") { e.preventDefault(); closeMenu(); }
+    return;
+  }
   if (ledger.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
     return;
@@ -768,10 +895,9 @@ window.addEventListener("keydown", (e) => {
     return; // typing goes to the input
   }
   if (e.key === "t" || e.key === "Enter") { e.preventDefault(); return startTalking(); }
-  if (e.key === "n") {
-    resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
-    return;
-  }
+  if (e.key === "Escape" || e.key === "m") { e.preventDefault(); return openMenu(); }
+  if (e.key === "n") return newConversation();
+  if (e.key === "p") { if (!ledger.openList()) log("Writing is off in config.toml, so the ledger stays shut."); return; }
   if (e.key === "e") return toggleTall();
   if (e.key === "x") return restKey("sit");
   if (e.key === "z") return restKey("lie");
@@ -833,8 +959,9 @@ async function boot() {
   bottom.addEventListener("transitionend", (e) => { if (e.propertyName === "flex-basis") fit(); });
 
   const cellAt = (ev) => {
-    const r = canvas.getBoundingClientRect();
-    return renderers[state.view].pick(ev.clientX - r.left, ev.clientY - r.top);
+    const r = canvas.getBoundingClientRect(), rd = renderers[state.view];
+    const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+    return rd.pickFigure?.(mx, my, [state.tally]) || rd.pick(mx, my);
   };
   canvas.addEventListener("mousemove", (ev) => {
     const c = cellAt(ev);
@@ -843,7 +970,19 @@ async function boot() {
     $("hover").textContent = isTally ? "Tally" : (c && describe(c.x, c.y)) || "";
   });
   canvas.addEventListener("mouseleave", () => { renderers[state.view].hover = null; $("hover").textContent = ""; });
+  let swallow = false; // the click that closes the right-click menu does not also walk
+  document.addEventListener("pointerdown", (ev) => {
+    if (!ctxEl.hidden && !ctxEl.contains(ev.target)) { hideCtx(); swallow = ev.target === canvas && ev.button === 0; }
+  }, true);
+  canvas.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    swallow = false;
+    const c = cellAt(ev);
+    if (c) showCtx(ev.clientX, ev.clientY, c.x, c.y);
+  });
+  canvas.addEventListener("wheel", hideCtx, { passive: true });
   canvas.addEventListener("click", (ev) => {
+    if (swallow) { swallow = false; return; }
     const c = cellAt(ev);
     if (c) walkTo(c.x, c.y);
   });
@@ -877,17 +1016,23 @@ async function boot() {
     statusEl.innerHTML = `<span class="warn">Tally's core not loaded (${st.core_missing.join(", ")} missing)</span>`;
     log("Warning: Tally's core files were not found. Set tally.core_dir in config.toml. Tally will say so if you talk.", "err");
   } else {
-    statusEl.textContent = `brain: ${st.brain} · core: ${st.core_loaded.join(", ")}`;
+    $("menu-status").textContent = `brain: ${st.brain} · core: ${st.core_loaded.join(", ")}`;
   }
 
   state.writes = st.writes || "off";
   ledger.initLedger(state.writes, log);
   board.initBoard(log);
-  if (state.writes !== "off") statusEl.append(` · writing: ${state.writes}`);
+  $("menu-status").append(` · writing: ${state.writes}` + (Number(st.tick_minutes) > 0 ? ` · Tally chooses every ${st.tick_minutes} min` : ""));
 
   log("You push open the heavy glass door and step into the vault.");
   log("Somewhere north, a pen scratches in a ledger.", "action");
-  updateSide();
+  const startRoom = roomAt(state.player.x, state.player.y);
+  if (startRoom) {
+    (state.announced ||= {})[startRoom.name] = performance.now();
+    log(startRoom.name, "room-name");
+    if (startRoom.desc) log(startRoom.desc);
+  }
+  log("Right-click anything to look closer. Esc opens the menu.", "sys");
 
   const frame = (ms) => {
     const t = ms / 1000;

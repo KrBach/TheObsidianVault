@@ -214,6 +214,18 @@ export class IsoRenderer {
     return { x: gx, y: gy };
   }
 
+  // A figure stands taller than its tile: a point on its body picks the figure's cell.
+  pickFigure(mx, my, figures) {
+    if (!this.origin) return null;
+    const wx = (mx - this.origin[0]) / this.zoom;
+    const wy = (my - this.origin[1]) / this.zoom;
+    for (const e of figures) {
+      const [sx, sy] = IsoRenderer.toScreen(e.rx, e.ry);
+      if (Math.abs(wx - sx) <= 9 && wy >= sy - 40 && wy <= sy + 4) return { x: e.x, y: e.y };
+    }
+    return null;
+  }
+
   // ---------- primitives ----------
 
   diamond(cx, cy, w, h) {
