@@ -22,13 +22,29 @@ Tally's identity is not defined in this repo. At startup the game reads the shar
 Needs Python 3.9 or newer (the one that ships with macOS is fine). No packages are needed for the Claude Code brain.
 
 ```sh
-cp config.example.toml config.toml   # then set tally.core_dir to your vault folder
 python3 -m obsidian_vault
 ```
 
-It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so your vault path stays local.
+It opens http://127.0.0.1:8765 in your browser. Then open the menu (Esc) → **Settings** and set your vault folder.
 
-Set your name in the game (menu, Esc → **Character**: your name, your companion's name, a portrait upload, the time zone and your password), or by hand in `config.toml` under `[names]`: `owner` (you), `companion` (default Tally) and optionally `owner_portrait`. What you set in the game is kept in `.vault-state/settings.json` and wins over `config.toml`, which the game never rewrites. The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. Set `[tally] timezone` (for example `"Europe/Berlin"`) for log timestamps; it defaults to this computer's.
+### Your settings live outside the repo
+
+Everything that belongs to you or this computer (the vault folders, your name, the time zone, the errands browser) is kept in **one local file outside the game's folder**, so a pull, a fresh download or a new release never touches it:
+
+| system | the local settings file |
+| --- | --- |
+| macOS | `~/Library/Application Support/TheObsidianVault/config.toml` |
+| Linux | `~/.config/TheObsidianVault/config.toml` (or under `$XDG_CONFIG_HOME`) |
+| Windows | `%APPDATA%\TheObsidianVault\config.toml` |
+
+`VAULT_CONFIG=/some/file.toml` points the game at another file. The game creates the file on first run from [config.example.toml](config.example.toml), which holds placeholders only. The terminal shows where the file is, in a short form.
+
+- **In the game:** Esc → **Settings** sets the Private vault folder, the Work vault folder (optional) and the browser for session errands (`safari`, `chrome` or `off`). A folder is accepted only if it exists on this computer. Esc → **Character** sets your name, your companion's name (default Tally), the time zone, a portrait upload and your password. Changes are written to the local file at once, keeping its comments. Changing the vault folder starts a fresh conversation with Tally. Guests never see either window, and the server refuses them both.
+- **By hand:** edit the local file: `[names]` `owner`, `companion` and `owner_portrait`; `[tally]` `core_dir`, `work_dir` and `timezone` (an IANA name such as `"Europe/Berlin"`; empty means this computer's); `[errands]` `browser`. Restart the game afterwards.
+- **Moving from an older version (done once, by itself):** an old `config.toml` in the game folder is moved to the local file and left behind as `config.toml.migrated`. Names and the time zone set earlier in the game (`.vault-state/settings.json`) are folded in, and that file is renamed `settings.json.migrated`. Nothing is deleted.
+- **Kept in the state folder (`.vault-state/`, git-ignored):** the password hash, the uploaded portrait, the conversation id, the ledger, backups and Tally's moves. Set `[writes] state_dir` in the local file to a folder outside the game's folder if you also want those to survive a fresh download.
+
+The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. A test (`tests/test_pii.py`) fails if a file in the repo holds a home-folder path, an email address (other than placeholders like `@example.com`) or a phone number.
 
 ### Logging in
 
@@ -44,12 +60,12 @@ The game opens at the door: come in as the owner (the name in `[names] owner`) o
 
 ### Tally's brain
 
-Set `brain.kind` in `config.toml`:
+Set `brain.kind` in your local settings file (see above):
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set `tally.work_dir` to your Work vault to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`); press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set the Work vault (Esc → Settings, or `tally.work_dir`) to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`); press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in your local settings file as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
-`brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
+`brain.model` picks a model; leave it empty for the default. Environment overrides: `VAULT_CONFIG`, `TALLY_CORE_DIR`, `TALLY_WORK_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`. An override wins over the settings file, including what you set in the menu.
 
 ## Writing to the vault
 
@@ -62,7 +78,7 @@ With the Claude Code brain, Tally gets a few vault tools from a small built-in M
 - **propose_note**: create a new note in a theme folder.
 - **vault_size**: how big `bootstrap.md` + `soul.md` are against the 35 KB guide.
 
-Set `writes.mode` in `config.toml`:
+Set `writes.mode` in your local settings file:
 
 | mode | what happens |
 | --- | --- |
@@ -82,7 +98,7 @@ The conversation itself stays small and read-only. Bigger jobs go out as **erran
 
 - **research**: reads the vaults and the web; writes nothing. The report is the result.
 - **code**: changes this game in its own git worktree on a branch `errand/<id>` (never the copy you are running), runs the tests, commits and pushes that one branch. It may not push anywhere else, merge, rebase or force-push. You review it as a pull request.
-- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like a regular data check with your own skills. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt. The desktop app's built-in browser cannot reach a run the game starts, so `[errands] browser` picks one that can:
+- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like a regular data check with your own skills. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt. The desktop app's built-in browser cannot reach a run the game starts, so `[errands] browser` (also in Esc → Settings) picks one that can:
   - `"safari"` (the default): **MCPSafari**, a local MCP server named `mcp-safari` in your `~/.claude.json`, bridged to its Safari extension. Its tools (`mcp__mcp-safari`) are always allowed. Keep Safari open with the extension turned on, and grant it the sites errands need (Safari asks before the extension touches a new site, and nobody is there to answer, so the run reports an ungranted site as a blocker). Krooster is skipped: you are not logged in there in Safari.
   - `"chrome"`: **Claude in Chrome** in your own Chrome. The run starts with `claude --chrome` and `mcp__claude-in-chrome` is allowed. Keep Chrome open with the extension signed in to your Claude account. (A Chrome admin policy can block the extension; that is why Safari is the default.)
   - `"off"`: no browser.
@@ -165,7 +181,7 @@ The map itself is plain text in [world/vault.json](world/vault.json); its `legen
 ## Layout
 
 ```
-obsidian_vault/   Python: config, persona loading, brains (Claude Code / API), web server
+obsidian_vault/   Python: config (the local settings file), persona loading, brains (Claude Code / API), web server
 context/          the game's context layer for Tally
 world/            map, rooms and tile definitions
 web/              the browser client: iso.js (isometric), renderer.js (ASCII), main.js (input, walking), talk.js

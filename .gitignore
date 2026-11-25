@@ -1,5 +1,7 @@
-# Local config holds the path to your private vault. Never commit it.
+# Your settings live outside the repo (see config.py). An old config.toml here, or the copy left
+# behind when it was moved out (config.toml.migrated), holds your vault path: never commit either.
 config.toml
+config.toml.*
 __pycache__/
 *.pyc
 .venv/

@@ -11,10 +11,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from .auth import COOKIE, SESSION_DAYS, Auth, AuthError
 from .board import Board, BoardError
 from .character import CharacterError, portrait_file
-from . import character, ledger as ledger_mod
-from .brains import Brain, make_brain, make_guest_brain
+from . import character, ledger as ledger_mod, settings
+from .brains import Brain, make_brain, make_guest_brain, write_mcp_config
 from .errands import Errands
-from .config import REPO_ROOT, Config, load_config
+from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
@@ -76,6 +76,17 @@ class Game:
         self.guest_brain.persona = load_guest_persona(self.cfg)
         ledger_mod._TZ = self.cfg.timezone
         self.moves.timezone = self.cfg.timezone
+
+    def apply_settings(self, changed: list[str]) -> None:
+        """New vault folders from the Settings window: point everything at them now."""
+        if not ({"core_dir", "work_dir"} & set(changed)):
+            return
+        self.apply_character()  # the system prompt (core files, Work vault line) is rebuilt
+        self.ledger.root = self.cfg.core_dir.resolve() if self.cfg.core_dir else None
+        if hasattr(self.brain, "mcp_config"):  # the Claude Code brain
+            self.brain.mcp_config = write_mcp_config(self.cfg)  # the vault tools get the new folder
+        if "core_dir" in changed:
+            self.brain.reset()  # a conversation belongs to the folder it ran in; start a fresh one
 
     def names(self) -> dict:
         return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
@@ -141,7 +152,7 @@ def make_handler(game: Game):
             self.wfile.write(body)
 
         # Guests may walk around and talk to Tally; the owner's things stay theirs.
-        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character")
+        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character", "/api/settings")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -190,6 +201,8 @@ def make_handler(game: Game):
             if self.path == "/api/character":
                 return self._json({**game.names(), "timezone": game.cfg.timezone,
                                    "uploaded": bool(portrait_file(game.cfg.state_dir))})
+            if self.path == "/api/settings":  # owner only (OWNER_ONLY): these are the owner's paths
+                return self._json(settings.view(game.cfg))
             if self.path == "/api/pending":
                 return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
                                    "size": game.ledger.size_report(for_tally=False)})
@@ -231,6 +244,14 @@ def make_handler(game: Game):
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
                 game.apply_character()
                 return self._json({"ok": True, **game.names(), "timezone": game.cfg.timezone})
+
+            if self.path == "/api/settings":
+                try:
+                    result = settings.save(game.cfg, payload)
+                except settings.SettingsError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+                game.apply_settings(result["changed"])
+                return self._json({"ok": True, **result, **settings.view(game.cfg)})
 
             if self.path == "/api/reset":
                 (game.guest_brain if guest else game.brain).reset()
@@ -326,9 +347,10 @@ def main() -> None:
     p = game.persona
     print("The Obsidian Vault")
     print(f"  brain: {game.brain.name}")
+    print(f"  settings: {short_path(cfg.config_path)} (outside the game folder; Esc → Settings in the game)")
     print(f"  names: {cfg.owner} (owner), {cfg.companion} (companion)")
     if cfg.owner == "Owner":
-        print('  note: set your name in config.toml under [names] owner = "..."')
+        print("  note: set your name in the game (Esc → Character)")
     if game.brain.name == "claude-code":
         if cfg.claude_path:
             print(f"  claude: {cfg.claude_path}")
@@ -336,10 +358,10 @@ def main() -> None:
             from .brains import CLAUDE_MISSING
             print(f"  WARNING: {CLAUDE_MISSING}")
     if p.ok:
-        print(f"  {cfg.companion}'s core: {', '.join(p.loaded)} from {cfg.core_dir}")
+        print(f"  {cfg.companion}'s core: {', '.join(p.loaded)} from {short_path(cfg.core_dir)}")
     else:
         print(f"  WARNING: Tally's core is incomplete. Missing: {', '.join(p.missing)}")
-        print("  Set tally.core_dir in config.toml (copy config.example.toml).")
+        print("  Set the Private vault folder in the game (Esc → Settings), or tally.core_dir in your settings file.")
     modes = {"off": "off (read-only)", "review": ("review (note changes wait for you in the game; soul.md is Tally's own)" if cfg.soul_direct
                        else "review (every change waits for you in the game)"),
              "direct": "direct (soul.md at once; note changes wait for you)"}

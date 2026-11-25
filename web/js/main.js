@@ -10,6 +10,7 @@ import { names, setNames, fill, fillPage } from "./names.js";
 import * as character from "./character.js";
 import { createDenizens } from "./denizens.js";
 import * as voice from "./voice.js";
+import * as settings from "./settings.js";
 
 window.vaultStarted = true; // the scripts loaded; the door may still be closed
 
@@ -945,6 +946,8 @@ $("m-ledger").addEventListener("click", () => { closeMenu(); openLedger(); });
 $("m-logout").addEventListener("click", () => logout());
 $("m-character").addEventListener("click", () => { closeMenu(); character.open(); });
 character.initCharacter();
+$("m-settings").addEventListener("click", () => { closeMenu(); if (!isGuest()) settings.open(); });
+settings.initSettings(() => character.open());
 
 function openBoard() { return isGuest() ? forOwner("notice board") : board.open(); }
 // Walking up to the board in the Entrance Hall
@@ -988,6 +991,10 @@ window.addEventListener("keydown", (e) => {
   if (character.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); character.close(); }
     return; // typing goes to the form
+  }
+  if (settings.isOpen()) {
+    if (e.key === "Escape") { e.preventDefault(); settings.close(); }
+    return;
   }
   if (ledger.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
@@ -1059,7 +1066,7 @@ async function boot() {
     w.creatures.player = { ...w.creatures.player, name: "Guest", fg: "#b8c0cc",
       iso: { ...w.creatures.player.iso, color: "#5a6878" }, portrait: { frame: "#8a94a4" } };
     $("talk-prompt").textContent = "Guest>";
-    for (const id of ["board-open", "m-board", "m-ledger", "m-character"]) $(id).hidden = true;
+    for (const id of ["board-open", "m-board", "m-ledger", "m-character", "m-settings"]) $(id).hidden = true;
   } else {
     $("talk-prompt").textContent = `${names.owner}>`;
   }
@@ -1152,7 +1159,7 @@ async function boot() {
   const statusEl = $("status");
   if (st.core_missing.length) {
     statusEl.innerHTML = `<span class="warn">Tally's core not loaded (${st.core_missing.join(", ")} missing)</span>`;
-    log("Warning: Tally's core files were not found. Set tally.core_dir in config.toml. Tally will say so if you talk.", "err");
+    log("Warning: Tally's core files were not found. Set the vault folder in the menu (Esc → Settings). Tally will say so if you talk.", "err");
   } else {
     $("menu-status").textContent = `brain: ${st.brain} · core: ${st.core_loaded.join(", ")}`;
   }
