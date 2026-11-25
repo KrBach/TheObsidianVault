@@ -28,8 +28,10 @@ WORLD_FILE = REPO_ROOT / "world" / "vault.json"
 TILES_FILE = REPO_ROOT / "world" / "tiles.json"
 
 # Furniture Tally may place or clear. Everything else (walls, doors, shelves, the desk) is fixed.
-MOVABLE = ["candle", "brazier", "papers", "mat", "pool", "scribe_desk", "map_table", "graph_node", "graph_edge"]
+MOVABLE = ["candle", "brazier", "papers", "mat", "pool", "scribe_desk", "map_table", "graph_node", "graph_edge",
+           "chair", "chair_ne", "bench", "couch", "table", "hammock", "bed", "treadmill", "cushion"]
 FLOORS = {"floor", "floor_glint"}
+POSES = ("sit", "lie", "walk")
 MAX_CHANGES = 400
 MAX_SPOTS = 30
 
@@ -241,6 +243,35 @@ class World:
             raise WorldError(f"unknown intent {kind}")
         _write_json(self.intent_file, intent)
         return msg
+
+    def settle(self, how: str, why: str = "", item: str = "", place: str = "", minutes: float = 0) -> str:
+        """Sit, lie or walk: on furniture of a kind, the nearest that suits, or the floor. Resolved by the game."""
+        how = str(how).strip().lower()
+        if how not in POSES:
+            raise WorldError(f"how must be one of: {', '.join(POSES)}")
+        item = str(item or "").strip().lower().replace(" ", "_")
+        world = self.load()
+        kinds = {tid for tid, d in world["tiles"].items() if how in (d.get("use") or {}).get("poses", [])}
+        if item and item != "floor" and item not in kinds:
+            raise WorldError(f"you cannot {how} on a {item}; for '{how}' try: {', '.join(sorted(kinds | ({'floor'} if how != 'walk' else set())))}")
+        if item == "floor" and how == "walk":
+            raise WorldError("walking in place needs a treadmill")
+        minutes = max(0.0, min(float(minutes or 0), 120.0))
+        intent = {"kind": "settle", "how": how, "item": item, "minutes": minutes,
+                  "why": " ".join(str(why or "").split())[:200], "time": time.time()}
+        where = "where you stand" if not place else ""
+        if place:
+            s = next((s for s in world["spots"] if s["id"] == str(place).strip().lower()), None)
+            if not s:
+                raise WorldError(f"no place '{place}'; places: {', '.join(s['id'] for s in world['spots'])}")
+            intent.update(spot=s["id"], at=s["at"], name=s["name"], room=s.get("room", ""))
+            where = s["name"]
+        what = {"sit": "sit", "lie": "lie down", "walk": "walk in place"}[how]
+        on = f"on the floor {where}" if item == "floor" else (f"on a {world['tiles'][item]['name']}" if item else "on the nearest thing that suits, or the floor")
+        if place and item != "floor":
+            on = f"{where}" + (f", on a {world['tiles'][item]['name']}" if item else ", on whatever is there, or the floor")
+        _write_json(self.intent_file, intent)
+        return f"You will {what} {on} when this reply ends, until the game next asks you" + (f" (at least {minutes:g} minutes)." if minutes else ".")
 
     def take_intent(self) -> dict | None:
         data = _read_json(self.intent_file, None)

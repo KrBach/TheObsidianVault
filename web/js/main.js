@@ -197,6 +197,83 @@ function bfs(start, goals, passable) {
 
 const neighbours = (x, y) => STEPS4.map(([dx, dy]) => [x + dx, y + dy]).filter(([nx, ny]) => walkable(nx, ny));
 
+// ---------- furniture and resting ----------
+// A piece of furniture says what you can do on it (tiles.json "use": poses sit, lie or walk, and the
+// height of its surface). Plain floor takes sit and lie too. Each figure has a pose (null when
+// standing); stopping on furniture takes its first pose, and any step clears it.
+
+const FLOOR_REST = new Set(["floor", "floor_glint", "mat", "compass_rose", "papers"]);
+const POSE_WORD = { sit: "sitting", lie: "lying", walk: "walking in place" };
+
+function useAt(x, y) {
+  const t = tileAt(x, y);
+  return t?.def?.use ? t : null;
+}
+
+function canPose(x, y, how) {
+  const t = tileAt(x, y);
+  if (!t?.def) return false;
+  if (t.def.use) return t.def.use.poses.includes(how);
+  return how !== "walk" && FLOOR_REST.has(t.id);
+}
+
+function poseOn(x, y, how) {
+  const t = tileAt(x, y);
+  return { how, h: t?.def?.use ? t.def.use.h || 0 : 0, floor: !t?.def?.use };
+}
+
+function restPlace(x, y) {
+  const spot = (state.world.spots || []).find((s) => s.at[0] === x && s.at[1] === y);
+  const t = tileAt(x, y);
+  const room = roomAt(x, y);
+  if (t?.def?.use) return spot ? spot.name : `on a ${t.def.name} in ${room ? room.name : "the vault"}`;
+  return `on the floor ${spot ? spot.name.replace(/^(at|in|on|by|among|along|sorting) /, "$1 ") : `in ${room ? room.name : "the vault"}`}`;
+}
+
+function poseText(e) {
+  return e.pose ? `${POSE_WORD[e.pose.how]} ${restPlace(e.x, e.y)}` : "";
+}
+
+// Tiles where a pose fits, optionally of one furniture kind ("floor" for bare floor).
+function restTiles(how, item = "") {
+  const out = [], map = state.world.map;
+  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) {
+    const t = tileAt(x, y);
+    if (!t?.def || !canPose(x, y, how)) continue;
+    const match = item === "floor" ? !t.def.use : item ? t.id.startsWith(item) : !!t.def.use;
+    if (!match) continue;
+    out.push([x, y]);
+  }
+  return out;
+}
+
+function setPose(e, how) {
+  const before = e.pose;
+  e.pose = how ? poseOn(e.x, e.y, how) : null;
+  e.poseAt = `${e.x},${e.y}`;
+  if (e === state.player) {
+    if (how) log(`You ${how === "walk" ? "step onto the belt and walk, going nowhere" : how === "lie" ? "lie down" : "sit down"} ${restPlace(e.x, e.y)}.`, "action");
+    else if (before) log("You get up.", "action");
+  }
+}
+
+// Kristian's keys: x to sit (here, or the nearest seat), z to lie down; again to get up.
+function restKey(how) {
+  const p = state.player;
+  if (state.path.length) return;
+  if (p.pose) { p.declined = `${p.x},${p.y}`; return setPose(p, null); }
+  if (canPose(p.x, p.y, how)) return setPose(p, how);
+  const tile = tileAt(p.x, p.y);
+  if (tile?.def?.use && how === "sit" && tile.def.use.poses[0]) return setPose(p, tile.def.use.poses[0]);
+  const near = restTiles(how).filter(([x, y]) => !(x === state.tally.x && y === state.tally.y));
+  const path = findPath(near);
+  if (path === null || path.length > 12) return log(how === "lie" ? "There is nowhere to lie down here." : "There is nowhere to sit here.");
+  if (state.talking) stopTalking();
+  p.wantPose = how;
+  state.path = path;
+  state.onArrive = null;
+}
+
 function walkTo(x, y) {
   if (state.talking) stopTalking();
   const t = tileAt(x, y);
@@ -363,12 +440,46 @@ function sendTally(at, name, room, why, firmMs = 0, keepPlan = false) {
   return true;
 }
 
+// Tally sits, lies or walks in place: at a named place, on the nearest piece that suits, or on the floor.
+function settleTally(ev, firm = 0) {
+  const t = state.tally, how = ev.how || "sit", item = ev.item || "";
+  const notPlayer = ([x, y]) => !(x === state.player.x && y === state.player.y);
+  let goal = null;
+  if (ev.at) {
+    const [px, py] = ev.at;
+    const near = restTiles(how, item).filter(notPlayer)
+      .filter(([x, y]) => Math.max(Math.abs(x - px), Math.abs(y - py)) <= 2)
+      .sort((a, b) => Math.hypot(a[0] - px, a[1] - py) - Math.hypot(b[0] - px, b[1] - py));
+    goal = near[0] || (canPose(px, py, how) && item !== "floor" ? [px, py] : null) || (how !== "walk" ? [px, py] : null);
+  } else if (item === "floor" || (!item && !restTiles(how).length)) {
+    goal = [t.x, t.y];
+  } else {
+    const path = bfs([t.x, t.y], restTiles(how, item).filter(notPlayer), tallyFree);
+    goal = path === null ? null : path.length ? path[path.length - 1] : [t.x, t.y];
+  }
+  if (!goal) { log("Tally looks about for somewhere to settle, and finds nothing free.", "action"); return; }
+  const name = restPlace(goal[0], goal[1]);
+  t.wantPose = canPose(goal[0], goal[1], how) ? how : (how === "walk" ? null : "sit");
+  if (goal[0] === t.x && goal[1] === t.y) {
+    t.path = null;
+    t.pose = null; // re-take the pose below, on the next frame
+    setDoing("go", ev.why, { name, firmUntil: firm ? performance.now() + firm : 0 });
+    return;
+  }
+  if (sendTally(goal, name, roomAt(...goal)?.id || "", ev.why, firm)) {
+    t.wantPose = canPose(goal[0], goal[1], how) ? how : "sit";
+    if (t.path.length) log(`Tally goes ${how === "lie" ? "to lie down" : how === "walk" ? "to the treadmill" : "to sit"}, ${name}.`, "action");
+  }
+}
+
 // What Tally said they would do, from the game tools in a reply: go, stay, follow or wander.
 function applyIntent(ev) {
   const t = state.tally;
   const firm = (Number(ev.minutes) || 0) * 60000;
   if (ev.kind === "go" && ev.at) {
     if (sendTally(ev.at, ev.name, ev.room, ev.why, firm) && t.path.length) log(`Tally sets off, ${ev.name}.`, "action");
+  } else if (ev.kind === "settle") {
+    settleTally(ev, firm);
   } else if (ev.kind === "stay") {
     t.path = null;
     t.plan = [];
@@ -390,8 +501,8 @@ function applyIntent(ev) {
 function doingText() {
   const t = state.tally, d = t.doing || { kind: "round" };
   if (d.kind === "follow") return "walking with Kristian";
-  if (d.kind === "go") return t.path?.length ? `on your way ${d.name}` : `staying ${d.name}`;
-  if (d.kind === "stay") return "staying here, as you chose";
+  if (d.kind === "go") return t.path?.length ? `on your way ${d.name}` : (t.pose ? poseText(t) : `staying ${d.name}`);
+  if (d.kind === "stay") return t.pose ? `${poseText(t)}, as you chose` : "staying here, as you chose";
   if (ticksOn()) return "staying put; you have not chosen anywhere new yet";
   return t.path?.length ? "walked by the game's default round" : "paused on the game's default round";
 }
@@ -467,6 +578,11 @@ async function tallyChooses() {
     line.textContent = res.say;
   }
   const plan = Array.isArray(res.plan) ? res.plan : [];
+  if (res.rest && (res.go === "stay" || !res.at)) {
+    settleTally({ how: res.rest, why: res.why || "settling in" });
+    t.plan = plan;
+    return;
+  }
   if (res.go === "stay" || !res.at) {
     // keep doing what Tally was doing, renewed until the next tick
     const d = t.doing;
@@ -477,6 +593,11 @@ async function tallyChooses() {
     return;
   }
   if (res.at[0] === t.x && res.at[1] === t.y) { setDoing("go", res.why, { name: res.name }); t.plan = plan; return; }
+  if (res.rest) {
+    settleTally({ how: res.rest, why: res.why || "", at: res.at, name: res.name });
+    t.plan = plan;
+    return;
+  }
   if (sendTally(res.at, res.name, res.room, res.why || "") && !res.say) log(`Tally sets off, ${res.name}.`, "action");
   t.plan = plan;
 }
@@ -586,7 +707,7 @@ async function say(text) {
   const room = roomAt(state.player.x, state.player.y);
   const tallyRoom = roomAt(state.tally.x, state.tally.y);
   const atDesk = state.tally.x === state.world.tally[0] && state.tally.y === state.world.tally[1];
-  const where = `Kristian is standing in ${room ? room.name : "the vault"}, next to you. ` +
+  const where = `Kristian is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
     `You are ${atDesk ? "at your desk in the Hearth" : `in ${tallyRoom ? tallyRoom.name : "the vault"}`}, ` +
     `at (${state.tally.x},${state.tally.y}).` + promiseText();
   state.lastSaid = text;
@@ -652,6 +773,8 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "e") return toggleTall();
+  if (e.key === "x") return restKey("sit");
+  if (e.key === "z") return restKey("lie");
   if (e.key === "b") return board.open();
   if (e.key === "v") return setView(state.view === "iso" ? "ascii" : "iso");
   const d = KEYS[e.key];
@@ -772,6 +895,19 @@ async function boot() {
       e.rx += (e.x - e.rx) * 0.35;
       e.ry += (e.y - e.ry) * 0.35;
       e.moving = Math.abs(e.x - e.rx) + Math.abs(e.y - e.ry) > 0.05;
+      // a step clears a pose; stopping on furniture (or where a pose was asked for) takes one
+      if (e.pose && e.poseAt !== `${e.x},${e.y}`) e.pose = null;
+      const still = !e.moving && (e === state.player ? !state.path.length : !state.tally.path?.length && state.tally.doing?.kind !== "follow");
+      if (still && !e.pose) {
+        const here = `${e.x},${e.y}`;
+        if (e.wantPose && canPose(e.x, e.y, e.wantPose)) { setPose(e, e.wantPose); e.wantPose = null; }
+        else if (e.declined !== here) {
+          const use = tileAt(e.x, e.y)?.def?.use;
+          if (use && e.lastAuto !== here) { e.lastAuto = here; setPose(e, use.poses[0]); }
+        }
+        if (e.wantPose && !e.path?.length) e.wantPose = null;
+      }
+      if (e.moving) { e.declined = null; e.lastAuto = null; }
     }
     requestAnimationFrame(frame); // first, so one bad frame cannot stop the loop
     try {

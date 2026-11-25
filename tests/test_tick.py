@@ -85,6 +85,11 @@ class TickTest(unittest.TestCase):
         self.assertEqual([p["go"] for p in r["plan"]], ["maproom"])  # unknown places dropped, at most two looked at
         self.assertEqual(r["plan"][0]["why"], "check the indexes")
 
+    def test_parse_rest(self):
+        self.assertEqual(parse('{"go": "pool", "rest": "Sit"}', self.w)["rest"], "sit")
+        self.assertEqual(parse('{"go": "stay", "rest": "lie"}', self.w)["rest"], "lie")
+        self.assertEqual(parse('{"go": "pool", "rest": "dance"}', self.w)["rest"], "")
+
     def test_tick_choices_are_written_down_and_remembered(self):
         cfg = Cfg()
         brain = FakeBrain('{"go": "pool", "why": "the talk was long; I want the quiet", "say": "Quiet here.",'
@@ -102,6 +107,8 @@ class TickTest(unittest.TestCase):
     def test_talk_choices_and_old_entries(self):
         cfg = Cfg()
         log = MoveLog(cfg.state_dir)
+        log.add("talk", "settle", "by the still pool", "rest my feet", how="sit", item="floor")
+        self.assertIn("you chose to sit down on the floor, by the still pool", log.for_prompt())
         log.add("talk", "stay", "", "we are talking")
         self.assertIn("in a conversation with Kristian: you chose to stay where you were", log.for_prompt())
         old = json.dumps({"time": time.time() - 2 * 86400, "source": "tick", "kind": "go", "place": "x"})

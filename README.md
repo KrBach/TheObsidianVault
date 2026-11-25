@@ -72,6 +72,14 @@ For large tasks Tally holds a short **meeting** first (goal, what done looks lik
 
 The **notice board** (`b`, or the panel on the right) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
 
+## Furniture: sitting, lying down, walking in place
+
+Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.json): the poses `sit`, `lie` or `walk`, and the height of its surface). Stop on a piece and you take its first pose; any step gets you up. Plain floor takes sitting and lying too, so you can sit by the pool. In the vault now: a couch by the pool, chairs by the pool, in the Library, the Scriptorium and the Map Room, a hammock in the Graph Room, a bench in the Entrance Hall and a reading table. Beds, treadmills and cushions can be placed (`place_furniture`).
+
+- You: `x` to sit (where you stand, or the nearest seat), `z` to lie down; the same key again gets you up. Walking onto a chair or the couch sits you down.
+- Tally: `settle` (sit, lie or walk; an optional kind of furniture or `floor`; an optional place to go first), or `rest` in a tick. Each choice goes in Tally's moves journal like any other, and the game_state line says when either of you is sitting or lying somewhere.
+- The poses are drawn as placeholders (the figure sinks onto the seat, turns on its side, or bobs on the belt) until there are sprites for them; the furniture is drawn in the same lit placeholder style as the writing desks and map table.
+
 ## Controls
 
 | Input | Action |
@@ -85,6 +93,7 @@ The **notice board** (`b`, or the panel on the right) shows errand reports, the 
 | `n` | start a new conversation |
 | `e` | enlarge the talk box for long answers |
 | `b` | open the notice board (replaces the `b` diagonal step) |
+| `x` / `z` | sit / lie down (again to get up) |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
 The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.

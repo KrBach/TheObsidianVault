@@ -44,9 +44,11 @@ class MoveLog:
         self.path = Path(state_dir) / "moves.jsonl"
 
     def add(self, source: str, kind: str, place: str = "", why: str = "", say: str = "",
-            plan: list[dict] | None = None, room: str = "") -> dict:
+            plan: list[dict] | None = None, room: str = "", how: str = "", item: str = "") -> dict:
         rec = {"time": time.time(), "source": source, "kind": kind, "place": _clean(place, 120),
                "room": _clean(room, 60), "why": _clean(why), "say": _clean(say, 160)}
+        if how:
+            rec["how"], rec["item"] = _clean(how, 10), _clean(item, 30)
         if plan:
             rec["plan"] = [{"place": _clean(p.get("name") or p.get("place"), 120), "why": _clean(p.get("why"))}
                            for p in plan][:3]
@@ -88,6 +90,10 @@ class MoveLog:
             what = f"you chose to stay {where}" if rec.get("place") else "you chose to stay where you were"
         elif kind == "follow":
             what = "you chose to walk with Kristian"
+        elif kind == "settle":
+            how = {"sit": "sit down", "lie": "lie down", "walk": "walk in place"}.get(rec.get("how", ""), "settle")
+            on = " on the floor" if rec.get("item") == "floor" else (f" on a {rec['item']}" if rec.get("item") else "")
+            what = f"you chose to {how}{on}" + (f", {where}" if rec.get("place") else "")
         elif kind == "free":
             what = "you let go of your last plan, to choose again on your own"
         else:
