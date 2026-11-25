@@ -774,6 +774,52 @@ export class IsoRenderer {
     c.restore();
   }
 
+  // Brass, the Artificer, until he has a sprite: a stocky clockmaker in a leather apron, brass goggles
+  // pushed up on his forehead, a toolbox at his side. Tinkering, he bobs over his work and his hands move.
+  drawBrass(e, sx, sy, t, light, iso) {
+    const c = this.ctx, body = this.col(iso.color || "#6a4a2a"), apron = this.col(iso.apron || "#3a2616");
+    const metal = this.col(iso.metal || "#d8a848"), skin = [196, 150, 112];
+    const bob = e.moving ? Math.abs(Math.sin(t * 12)) * 2 : e.tinker ? Math.abs(Math.sin(t * 5)) * 1.6 : Math.sin(t * 2) * 0.5;
+    c.save();
+    c.globalAlpha = Math.max(0, Math.min(1, e.alpha ?? 1));
+    c.fillStyle = "rgba(0,0,0,0.4)";
+    c.beginPath(); c.ellipse(sx, sy, 11, 5.5, 0, 0, Math.PI * 2); c.fill();
+    const y0 = sy - bob, lean = e.tinker ? 2 : 0;
+    // legs, then a broad body
+    c.fillStyle = rgb(body, light, 0.55);
+    c.fillRect(sx - 6, y0 - 8, 4, 8); c.fillRect(sx + 2, y0 - 8, 4, 8);
+    c.fillStyle = rgb(body, light, 0.85);
+    c.beginPath(); c.ellipse(sx + lean * 0.5, y0 - 16, 10, 10, 0, 0, Math.PI * 2); c.fill();
+    // the leather apron, with a pocket
+    c.fillStyle = rgb(apron, light, 1);
+    c.beginPath(); c.moveTo(sx - 6, y0 - 21); c.lineTo(sx + 6, y0 - 21); c.lineTo(sx + 7, y0 - 6); c.lineTo(sx - 7, y0 - 6); c.closePath(); c.fill();
+    c.fillStyle = rgb(apron, light, 1.5);
+    c.fillRect(sx - 3, y0 - 13, 6, 3);
+    // arms: working at the table, they move in turn
+    const work = e.tinker ? Math.sin(t * 9) * 1.5 : 0;
+    c.fillStyle = rgb(body, light, 0.7);
+    c.fillRect(sx - 12, y0 - 20 + work, 3, 9); c.fillRect(sx + 9, y0 - 20 - work, 3, 9);
+    // head, beard, goggles pushed up
+    const hx = sx + lean, hy = y0 - 30;
+    c.fillStyle = rgb(skin, light, 1);
+    c.beginPath(); c.arc(hx, hy, 5.5, 0, Math.PI * 2); c.fill();
+    c.fillStyle = rgb([90, 70, 56], light, 1);
+    c.beginPath(); c.ellipse(hx, hy + 4, 5, 3, 0, 0, Math.PI); c.fill();
+    c.fillStyle = rgb(metal, light, 1.3);
+    c.fillRect(hx - 6, hy - 5, 12, 1.6);
+    c.beginPath(); c.arc(hx - 2.6, hy - 5.5, 2.2, 0, Math.PI * 2); c.arc(hx + 2.6, hy - 5.5, 2.2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = rgb([255, 230, 170], light, 1);
+    c.fillRect(hx - 3.2, hy - 6.2, 1.2, 1.2); c.fillRect(hx + 2, hy - 6.2, 1.2, 1.2);
+    // the toolbox, set down when he stands, carried when he walks
+    const bx = sx + 12, by0 = e.moving ? y0 - 12 : sy - 1;
+    c.fillStyle = rgb([120, 40, 30], light, 1);
+    c.fillRect(bx - 4, by0 - 6, 9, 6);
+    c.fillStyle = rgb(metal, light, 1.1);
+    c.fillRect(bx - 1.5, by0 - 8, 4, 2);
+    if (e.tinker && Math.sin(t * 7) > 0.85) this.glow(sx + lean, y0 - 18, 6, [255, 200, 120], 0.35); // a spark
+    c.restore();
+  }
+
   drawCreature(e, t, light) {
     const c = this.ctx;
     const def = this.creatures[e.kind];
@@ -848,6 +894,7 @@ export class IsoRenderer {
 
     if (iso.shape === "cat") return this.drawCat(e, sx, sy, t, light, iso);
     if (iso.shape === "imp") return this.drawImp(e, sx, sy, t, light, iso);
+    if (iso.shape === "brass") return this.drawBrass(e, sx, sy, t, light, iso);
 
     // placeholder figure: robe, hood or head
     const bob = e.moving ? Math.abs(Math.sin(t * 14)) * 2 : Math.sin(t * 2 + e.rx) * 0.6;

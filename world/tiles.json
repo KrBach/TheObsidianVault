@@ -623,6 +623,23 @@
         }
       }
     },
+    "brass": {
+      "glyph": "β",
+      "fg": "#d8a848",
+      "name": "Brass",
+      "desc": "Brass, the Artificer, the vault's game-maker: a stocky clockmaker in a leather apron, brass goggles pushed up on his forehead, a toolbox in one hand. (A stand-in figure until he has his own sprite.)",
+      "iso": {
+        "shape": "brass",
+        "color": "#6a4a2a",
+        "apron": "#3a2616",
+        "metal": "#d8a848",
+        "light": {
+          "color": "#ffc870",
+          "radius": 1.6,
+          "strength": 0.25
+        }
+      }
+    },
     "player": {
       "glyph": "@",
       "fg": "#ffe066",
