@@ -46,6 +46,7 @@
               <button type="button" class="menu-btn" id="m-board">Notice board (b)</button>
               <button type="button" class="menu-btn" id="m-ledger">Ledger (p)</button>
               <button type="button" class="menu-btn" id="m-character">Character: names, portrait, time zone, password</button>
+              <button type="button" class="menu-btn" id="m-settings">Settings: vault folders, errands browser</button>
               <button type="button" class="menu-btn" id="m-logout">Leave the vault (log out)</button>
               <div class="label">THE VAULT</div>
               <div id="menu-status" class="dim small"></div>
@@ -82,8 +83,23 @@
               <input id="char-old" type="password" placeholder="current password" autocomplete="current-password">
               <input id="char-new" type="password" placeholder="new password" autocomplete="new-password">
               <input id="char-new2" type="password" placeholder="new password again" autocomplete="new-password">
-              <div class="dim small">Saved in this game's settings (.vault-state), never in the repo. config.toml is left as it is; these win over it.</div>
+              <div class="dim small">Names and time zone are saved at once in your local settings file, outside the game's folder, so updates keep them. The portrait and password stay in the game's state folder.</div>
               <div class="review-foot"><span id="char-msg" class="warn"></span><button type="submit" class="primary">Save</button></div>
+            </div>
+          </form>
+        </div>
+        <div id="settings" class="pop" hidden>
+          <div class="review-head"><span>SETTINGS</span><button type="button" class="pop-close" id="settings-close" title="Close (Esc)">×</button></div>
+          <form id="settings-form" class="char-body">
+            <div class="char-fields">
+              <label>Private vault folder (bootstrap.md, soul.md)<input id="set-core" placeholder="~/path/to/your/vault" autocomplete="off" spellcheck="false"></label>
+              <div id="set-core-ok" class="small dim"></div>
+              <label>Work vault folder (optional, read-only)<input id="set-work" placeholder="empty: no Work vault" autocomplete="off" spellcheck="false"></label>
+              <div id="set-work-ok" class="small dim"></div>
+              <label>Browser for session errands<select id="set-browser"></select></label>
+              <button type="button" class="link-btn" id="set-character">your name, portrait and time zone: Character…</button>
+              <div id="set-file" class="dim small"></div>
+              <div class="review-foot"><span id="set-msg" class="warn"></span><button type="submit" class="primary">Save</button></div>
             </div>
           </form>
         </div>

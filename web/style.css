@@ -173,6 +173,7 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .link-btn { background: none; border: 0; color: var(--dim); font: inherit; font-size: 11px; cursor: pointer; text-decoration: underline; }
 .char-fields { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .char-fields label { display: flex; flex-direction: column; gap: 2px; color: var(--dim); font-size: 12px; }
-.char-fields input { background: #0a0610; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 4px 8px; outline: none; }
-.char-fields input:focus { border-color: var(--accent); }
+.char-fields input, .char-fields select { background: #0a0610; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 4px 8px; outline: none; }
+.char-fields input:focus, .char-fields select:focus { border-color: var(--accent); }
+#settings { width: min(560px, calc(100% - 24px)); left: 50%; right: auto; transform: translateX(-50%); }
 @media (max-width: 800px) { .char-body { flex-direction: column; } }
