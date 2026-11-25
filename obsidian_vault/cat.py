@@ -198,11 +198,16 @@ class Cat:
             raise CatError(f"nobody knows where {self.name} is just now")
         dist = max(abs(me[0] - there[0]), abs(me[1] - there[1]))
         n = self.name
+        if who == "tally" and dist > 1 and self._next_at_talk():
+            # Tally was told, when OWNER's message came in, that the cat was right next to them. Positions saved
+            # since can be a step off (the cat shifts, or a save lags), so that word counts: same rule, same moment.
+            dist = 1
         if action == "call":
             if dist > CALL_REACH:
                 return {"ok": False, "text": f"{n} is too far off to hear you.", "effect": "none"}
         elif dist > 1:
-            return {"ok": False, "text": f"You need to be next to {n} for that.", "effect": "none"}
+            return {"ok": False, "text": f"You need to be next to {n} for that (you are at ({me[0]},{me[1]}), {n} at ({there[0]},{there[1]})).",
+                    "effect": "none"}
 
         asleep, mood = state["asleep"], state["mood"]
         if action == "pet":
@@ -241,6 +246,26 @@ class Cat:
             data["pending"] = (data.get("pending") or [])[-4:] + [res]
             self._write(data)
         return res
+
+    def note_talk(self, cat, tally) -> None:
+        """Where the cat and Tally were when OWNER's message was sent: what <game_state> told Tally."""
+        c, t = _cell(cat), _cell(tally)
+        if c is None or t is None:
+            return
+        try:
+            self.save(cat)  # the freshest position there is
+        except CatError:
+            pass
+        data = self._load()
+        data["at_talk"] = {"cat": list(c), "tally": list(t), "time": self.clock()}
+        self._write(data)
+
+    def _next_at_talk(self, within: float = 600) -> bool:
+        seen = self._load().get("at_talk") or {}
+        c, t = _cell(seen.get("cat")), _cell(seen.get("tally"))
+        if c is None or t is None or self.clock() - float(seen.get("time") or 0) > within:
+            return False
+        return max(abs(c[0] - t[0]), abs(c[1] - t[1])) <= 1
 
     def take_pending(self) -> list[dict]:
         """Tally's tending since the last reply, for the browser to play out."""

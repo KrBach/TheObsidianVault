@@ -328,6 +328,7 @@ def make_handler(game: Game):
             where = str(payload.get("where", "")).strip()[:1000]
             if guest:
                 return self._stream(game.guest_brain, f"<game_state>{where}</game_state>\n{text}" if where else text, guest=True)
+            game.cat.note_talk(payload.get("cat"), payload.get("tally"))  # what Tally is told, for tend_cat
             finished = game.errands.unreported()
             if finished:
                 news = game.cfg.fill("\n\n".join(game.errands.summary(r) for r in finished))

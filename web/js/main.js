@@ -947,7 +947,7 @@ async function say(text) {
       intent: applyIntent,
       cat: (ev) => catFromTally(ev.events),
       world: () => reloadWorld().catch((e) => log(`Could not reload the map: ${e.message}`, "err")),
-    });
+    }, isGuest() ? {} : { cat: state.denizens?.snapshot(), tally: { x: state.tally.x, y: state.tally.y } }); // where game_state puts them
   } catch (e) {
     log(`Lost the connection to the vault: ${e.message}`, "err");
   }

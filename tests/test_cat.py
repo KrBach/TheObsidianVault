@@ -183,3 +183,21 @@ class CatTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TendAsToldTest(unittest.TestCase):
+    """Tally is told in <game_state> that the cat is next to them; the tool must agree even if the
+    saved positions moved a step while Tally was answering."""
+
+    def test_tally_next_to_it_when_the_message_came_in_counts(self):
+        d = Path(tempfile.mkdtemp())
+        clock = Clock()
+        cat = Cat(d, rng=lambda: 0.9, clock=clock)
+        cat.note_talk({"x": 29, "y": 3, "mood": "curious"}, {"x": 29, "y": 2})
+        cat.save({"x": 27, "y": 4, "mood": "curious"})  # it shifted while Tally was thinking
+        self.assertTrue(cat.tend("tally", "pet", {"x": 29, "y": 2})["ok"])
+        self.assertFalse(cat.tend("owner", "pet", [29, 2])["ok"])  # the owner walks over instead
+        clock.t += 3600  # an old conversation does not count
+        res = cat.tend("tally", "pet", {"x": 29, "y": 2})
+        self.assertFalse(res["ok"])
+        self.assertIn("(27,4)", res["text"])

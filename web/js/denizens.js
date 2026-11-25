@@ -341,7 +341,10 @@ export function createDenizens(world, api) {
     if (cat.path.length || cat.come) return cat.follow ? "following someone about" : "on its way somewhere, with purpose";
     if (cat.sleeping) return "asleep, curled up nose to tail";
     if (cat.batting) return "batting at things with one paw";
-    if (cat.mood === "hungry") return cat.hunger === "tally" ? "hungry, and staring at Tally about it" : "hungry, and waiting by its bowl";
+    if (cat.mood === "hungry") {
+      if (cat.hunger === "tally") return "hungry, and staring at Tally about it";
+      return whereWord() === "by its bowl" ? "hungry, and waiting by its bowl" : "hungry";
+    }
     return { sleepy: "drowsy", curious: "sitting and watching, curious", playful: "playful, tail twitching" }[cat.mood] || "sitting";
   }
 
