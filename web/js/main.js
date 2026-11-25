@@ -4,6 +4,7 @@ import { Portrait } from "./portrait.js";
 import { talk, resetConversation } from "./talk.js";
 import { renderMarkdown } from "./markdown.js";
 import * as ledger from "./ledger.js";
+import * as board from "./board.js";
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log"), form = $("talk"), input = $("say");
@@ -614,6 +615,10 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
     return;
   }
+  if (board.isOpen()) {
+    if (e.key === "Escape" || (e.key === "b" && !state.talking)) { e.preventDefault(); board.close(); }
+    return;
+  }
   if (state.talking) {
     if (e.key === "Escape") { e.preventDefault(); stopTalking(); }
     return; // typing goes to the input
@@ -624,6 +629,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "e") return toggleTall();
+  if (e.key === "b") return board.open();
   if (e.key === "v") return setView(state.view === "iso" ? "ascii" : "iso");
   const d = KEYS[e.key];
   if (d) {
@@ -727,6 +733,7 @@ async function boot() {
 
   state.writes = st.writes || "off";
   ledger.initLedger(state.writes, log);
+  board.initBoard(log);
   if (state.writes !== "off") statusEl.append(` · writing: ${state.writes}`);
 
   log("You push open the heavy glass door and step into the vault.");

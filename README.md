@@ -60,6 +60,18 @@ soul.md is Tally's own: interaction-log lines, coaching items and `edit_soul` ch
 
 Tests (against a made-up vault in a temp folder): `python3 -m unittest discover -s tests`.
 
+## Errands, meetings and the notice board
+
+The conversation itself stays small and read-only. Bigger jobs go out as **errands**: Tally writes a brief (`propose_errand`) and sets it on the desk, and nothing runs until you click **Approve and send** in the ledger. The game then starts a separate `claude -p` run for it in the background ([obsidian_vault/errands.py](obsidian_vault/errands.py)) and tells Tally the outcome on your next message. There are three kinds:
+
+- **research**: reads the vaults and the web; writes nothing. The report is the result.
+- **code**: changes this game in its own git worktree on a branch `errand/<id>` (never the copy you are running), runs the tests, commits and pushes that one branch. It may not push anywhere else, merge, rebase or force-push. You review it as a pull request.
+- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like the Arknights data check. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt.
+
+For large tasks Tally holds a short **meeting** first (goal, what done looks like, limits, cost) and reads the brief back before queuing it. You can call one yourself, for example at the map table.
+
+The **notice board** (`b`, or the panel on the right) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
+
 ## Controls
 
 | Input | Action |
@@ -71,9 +83,11 @@ Tests (against a made-up vault in a temp folder): `python3 -m unittest discover 
 | `v` | switch between the isometric and the ASCII view |
 | mouse wheel | zoom (isometric view) |
 | `n` | start a new conversation |
+| `e` | enlarge the talk box for long answers |
+| `b` | open the notice board (replaces the `b` diagonal step) |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
-The conversation lives in the server, so reloading the page keeps it. Restart the server or press `n` for a fresh one.
+The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.
 
 ## Art
 

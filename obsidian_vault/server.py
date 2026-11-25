@@ -7,7 +7,9 @@ import webbrowser
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
+from .board import Board, BoardError
 from .brains import Brain, make_brain
+from .errands import Errands
 from .config import REPO_ROOT, Config, load_config
 from .ledger import Ledger, LedgerError
 from .persona import Persona, load_persona, vault_shelves
@@ -22,7 +24,9 @@ class Game:
         self.cfg = cfg
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
-        self.ledger = Ledger(cfg)
+        self.errands = Errands(cfg)
+        self.board = Board(cfg)
+        self.ledger = Ledger(cfg, on_errand=self.errands.start)
         self.ticker = Ticker(cfg, self.brain)
         self.layout = World(cfg.state_dir)
 
@@ -35,6 +39,7 @@ class Game:
             "core_missing": self.persona.missing,
             "writes": self.cfg.writes_mode,
             "tick_minutes": self.cfg.tick_minutes,
+            "errands": self.cfg.errands and self.cfg.writes_mode != "off",
         }
         return world
 
@@ -64,7 +69,37 @@ def make_handler(game: Game):
             except (BrokenPipeError, ConnectionResetError):
                 pass  # the page went away (reload, closed tab) before the answer
 
+        def _bytes(self, body: bytes, ctype: str, sandbox: bool = False):
+            try:
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                if sandbox:  # a board page runs its own scripts, but never as the game
+                    self.send_header("Content-Security-Policy", "sandbox allow-scripts allow-popups")
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def do_GET(self):
+            if self.path == "/api/board":
+                return self._json({"items": game.board.listing(game.errands.all())})
+            if self.path.startswith("/api/board/file/"):
+                try:
+                    body, ctype = game.board.open_file(self.path.rsplit("/", 1)[1])
+                except (BoardError, OSError) as e:
+                    return self._json({"error": str(e)}, HTTPStatus.NOT_FOUND)
+                return self._bytes(body, ctype, sandbox=ctype.startswith(("text/html", "image/svg")))
+            if self.path.startswith("/api/board/report/"):
+                rec = game.errands.get(self.path.rsplit("/", 1)[1])
+                if not rec:
+                    return self._json({"error": "no such errand"}, HTTPStatus.NOT_FOUND)
+                return self._json({k: rec.get(k) for k in ("id", "kind", "title", "brief", "status", "result",
+                                                          "branch", "commits", "cost_usd", "approved", "finished")})
+            if self.path == "/api/errands":
+                return self._json({"errands": [{k: r.get(k) for k in ("id", "kind", "title", "status")}
+                                               for r in game.errands.all()[:20]]})
             if self.path == "/api/world":
                 return self._json(game.world())
             if self.path == "/api/pending":
@@ -109,6 +144,10 @@ def make_handler(game: Game):
             if not text:
                 return self._json({"error": "empty message"}, HTTPStatus.BAD_REQUEST)
             where = str(payload.get("where", "")).strip()
+            finished = game.errands.unreported()
+            if finished:
+                news = "\n\n".join(game.errands.summary(r) for r in finished)
+                text = f"<errands_finished>\n{news}\n</errands_finished>\n{text}"
             if where:
                 text = f"<game_state>{where}</game_state>\n{text}"
 

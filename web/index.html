@@ -17,6 +17,13 @@
       <section id="view">
         <canvas id="map"></canvas>
         <div id="hover"></div>
+        <div id="board" hidden>
+          <div class="review-head"><span>NOTICE BOARD · <span id="board-title"></span></span><button type="button" id="board-close" title="Close (Esc)">×</button></div>
+          <div class="board-body">
+            <div id="board-list"></div>
+            <div id="board-view"></div>
+          </div>
+        </div>
         <div id="review" hidden>
           <div class="review-head"><span id="review-title"></span><button type="button" id="review-close" title="Close (Esc)">×</button></div>
           <div id="review-why" class="dim"></div>
@@ -44,6 +51,10 @@
           <div id="ledger-list"></div>
           <div id="ledger-size" class="dim small"></div>
         </div>
+        <div class="panel">
+          <div class="label">NOTICE BOARD <span id="board-count" class="count"></span></div>
+          <button type="button" id="board-open" class="link-button">Read the board (b)</button>
+        </div>
         <div class="panel keys">
           <div class="label">KEYS</div>
           <div><b>click</b> to walk, click Tally to talk</div>
@@ -52,7 +63,7 @@
           <div><b>v</b> view: <span id="view-name"></span>, <b>wheel</b> zoom</div>
           <div><b>esc</b> stop talking</div>
           <div><b>n</b> new conversation</div>
-          <div><b>e</b> enlarge the talk box</div>
+          <div><b>e</b> enlarge the talk box, <b>b</b> notice board</div>
           <div><b>bell</b> in the hall: click to call Tally</div>
         </div>
       </aside>

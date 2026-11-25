@@ -31,6 +31,11 @@ TOOL_FLAVOUR = {
     "mcp__vault__vault_size": "Tally weighs the ledger",
     "mcp__vault__edit_soul": "Tally amends a page of their own",
     "mcp__vault__log_failure": "Tally writes a mistake into the failure log",
+    "mcp__vault__propose_errand": "Tally writes out an errand and sets it on the desk for you",
+    "mcp__vault__list_errands": "Tally checks the errand book",
+    "mcp__vault__errand_report": "Tally reads an errand's report",
+    "mcp__vault__pin_to_board": "Tally pins something to the notice board",
+    "mcp__vault__unpin_from_board": "Tally takes a page down from the notice board",
     "WebSearch": "Tally sends a runner out for news",
     "WebFetch": "Tally sends for a page from outside the vault",
     "mcp__vault__go_to": "Tally marks a place on the map",
@@ -52,6 +57,11 @@ VAULT_TOOLS = [
     "mcp__vault__vault_size",
     "mcp__vault__edit_soul",
     "mcp__vault__log_failure",
+    "mcp__vault__propose_errand",
+    "mcp__vault__list_errands",
+    "mcp__vault__errand_report",
+    "mcp__vault__pin_to_board",
+    "mcp__vault__unpin_from_board",
 ]
 
 WEB_TOOLS = ["WebSearch", "WebFetch"]

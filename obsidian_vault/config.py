@@ -14,6 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_FOLDERS = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
 WRITE_MODES = ("off", "review", "direct")
+# Tools a "session" errand may use without asking: your own Claude Code setup, skills and browser.
+DEFAULT_SESSION_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch",
+                         "mcp__claude-in-chrome"]
 
 
 @dataclass
@@ -36,6 +39,16 @@ class Config:
     tick_model: str = "haiku"
     work_dir: Path | None = None  # the Work vault: read-only from the game
     web: bool = True  # WebSearch and WebFetch (read-only lookups)
+    # Errands: bigger jobs Tally queues in the ledger; approving one starts a separate Claude Code run.
+    errands: bool = True
+    errand_timeout_minutes: float = 45.0
+    errand_max_running: int = 2
+    errand_model: str = ""
+    errand_repo: Path = REPO_ROOT  # where "code" errands branch from (in a git worktree)
+    errand_worktrees: Path = REPO_ROOT.parent / "TheObsidianVault-errands"
+    errand_session_tools: list[str] = field(default_factory=lambda: list(DEFAULT_SESSION_TOOLS))
+    # The notice board: what the game may show. Vault folders (relative to core_dir), read-only.
+    board_folders: list[str] = field(default_factory=lambda: ["Claude outputs"])
 
 
 # Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
@@ -101,6 +114,17 @@ def load_config(path: Path | None = None) -> Config:
         tick_model=str(tally.get("tick_model", "haiku")),
         web=bool(brain.get("web", True)),
     )
+    errands = data.get("errands", {})
+    cfg.errands = bool(errands.get("enabled", True))
+    cfg.errand_timeout_minutes = float(errands.get("timeout_minutes", 45))
+    cfg.errand_max_running = int(errands.get("max_running", 2))
+    cfg.errand_model = str(errands.get("model", ""))
+    if errands.get("repo"):
+        cfg.errand_repo = _expand(errands["repo"])
+    if errands.get("worktrees"):
+        cfg.errand_worktrees = _expand(errands["worktrees"])
+    cfg.errand_session_tools = list(errands.get("session_tools", DEFAULT_SESSION_TOOLS))
+    cfg.board_folders = list(data.get("board", {}).get("folders", ["Claude outputs"]))
     work = os.environ.get("TALLY_WORK_DIR") or tally.get("work_dir")
     if work:
         cfg.work_dir = _expand(work)

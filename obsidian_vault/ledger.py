@@ -128,8 +128,9 @@ def insert_in_section(doc: str, section: str, line: str, before: str | None = No
 
 
 class Ledger:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, on_errand=None):
         self.cfg = cfg
+        self.on_errand = on_errand  # starts an approved errand (the game sets this; the MCP server does not)
         self.root = cfg.core_dir.resolve() if cfg.core_dir else None
         self.mode = cfg.writes_mode
         self.state = cfg.state_dir
@@ -242,6 +243,27 @@ class Ledger:
               "summary": _one_line(reason, "reason")}
         return self._submit(op, direct_ok=False)
 
+    def propose_errand(self, kind: str, title: str, brief: str, spend_usd: float = 0) -> Result:
+        from .errands import KINDS  # late import: errands imports persona, which imports config
+        if not self.cfg.errands:
+            raise LedgerError("errands are switched off ([errands] enabled = false in config.toml)")
+        kind = _one_line(kind, "kind").lower()
+        if kind not in KINDS:
+            raise LedgerError(f"kind must be one of: {', '.join(KINDS)}")
+        title = _one_line(title, "title")
+        brief = str(brief).strip()
+        if len(brief) < 20:
+            raise LedgerError("the brief is too short to work from; say what to do, what done looks like and any limits")
+        if len(brief) > 12000:
+            raise LedgerError("the brief is over 12,000 characters; tighten it")
+        try:
+            spend = max(0.0, float(spend_usd or 0))
+        except (TypeError, ValueError):
+            raise LedgerError("spend_usd must be a number")
+        op = {"kind": "errand", "file": f"errand: {kind}", "errand_kind": kind, "title": title,
+              "brief": brief, "spend_usd": spend, "summary": title}
+        return self._submit(op, direct_ok=False)
+
     # ---------- queue ----------
 
     def _submit(self, op: dict, direct_ok: bool) -> Result:
@@ -253,6 +275,8 @@ class Ledger:
         op = {**op, "id": uuid.uuid4().hex[:10], "created": time.time()}
         self.pending_dir.mkdir(parents=True, exist_ok=True)
         (self.pending_dir / f"{op['id']}.json").write_text(json.dumps(op, ensure_ascii=False), encoding="utf-8")
+        if op["kind"] == "errand":
+            return Result("queued", f"Errand queued at the desk (id {op['id']}). Nothing runs until Kristian approves it.", op["id"])
         return Result("queued", f"Queued for Kristian's review in the game (id {op['id']}). Nothing is written until he approves it.", op["id"])
 
     def pending(self) -> list[dict]:
@@ -263,6 +287,10 @@ class Ledger:
             op = json.loads(f.read_text(encoding="utf-8"))
             try:
                 before, after = self.preview(op)
+                if op["kind"] == "errand":
+                    op["diff"], op["stale"] = after, False
+                    ops.append(op)
+                    continue
                 op["diff"] = "".join(difflib.unified_diff(
                     before.splitlines(True), after.splitlines(True), f"a/{op['file']}", f"b/{op['file']}", n=1))
                 op["stale"] = False
@@ -279,6 +307,16 @@ class Ledger:
 
     def approve(self, op_id: str) -> str:
         f, op = self._take(op_id)
+        if op["kind"] == "errand":
+            if not self.on_errand:
+                raise LedgerError("errands can only be started from the game")
+            try:
+                msg = self.on_errand(op)
+            except Exception as e:  # stays pending, so he can approve it again later
+                raise LedgerError(f"the errand did not start: {e}")
+            f.unlink()
+            self._log({"event": "errand started", "file": op["file"], "summary": op.get("summary")})
+            return msg
         self.apply(op)
         f.unlink()
         return f"Written to {op['file']}. {self.size_report(for_tally=False)}"
@@ -292,6 +330,9 @@ class Ledger:
 
     def preview(self, op: dict) -> tuple[str, str]:
         """(current text, text after the change). Raises LedgerError if it no longer applies."""
+        if op["kind"] == "errand":
+            spend = f"May spend up to ${op['spend_usd']:.2f} of your art credits.\n" if op.get("spend_usd") else ""
+            return "", f"Errand ({op['errand_kind']}): {op['title']}\n{spend}\n{op['brief']}\n"
         p = self.own(op["file"]) if op["file"] in OWN_FILES else self.resolve(op["file"], note=True)
         if op["kind"] == "create":
             if p.exists():
