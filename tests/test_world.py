@@ -20,6 +20,30 @@ class WorldTest(unittest.TestCase):
         world = self.w.load()
         return world["legend"][world["map"][y][x]]
 
+    def test_furniture_can_be_placed_and_used(self):
+        world = self.w.load()
+        for item in ("chair", "bench", "couch", "hammock", "bed", "treadmill", "cushion"):
+            self.assertIn("use", world["tiles"][item], item)
+        self.w.place("bed", 30, 12)
+        self.assertEqual(self.at(30, 12), "bed")
+        # the built-in pieces stand where the spots say
+        for sid, kind in (("couch", "couch"), ("hammock", "hammock"), ("pool_chair", "chair"), ("hall_bench", "bench")):
+            spot = next(s for s in world["spots"] if s["id"] == sid)
+            self.assertEqual(self.at(*spot["at"]), kind)
+
+    def test_settle_intent(self):
+        msg = self.w.settle("sit", "rest my feet", item="floor", place="pool")
+        self.assertIn("on the floor by the still pool", msg)
+        intent = self.w.take_intent()
+        self.assertEqual((intent["kind"], intent["how"], intent["item"], intent["spot"]), ("settle", "sit", "floor", "pool"))
+        self.w.settle("lie", "watch the notes", item="hammock")
+        self.assertEqual(self.w.take_intent()["item"], "hammock")
+        for bad in (("dance", ""), ("lie", "treadmill"), ("walk", "floor"), ("sit", "shelf")):
+            with self.assertRaises(WorldError):
+                self.w.settle(bad[0], "x", item=bad[1])
+        with self.assertRaises(WorldError):
+            self.w.settle("sit", "x", place="moon")
+
     def test_place_and_clear_a_candle(self):
         self.w.place("candle", 30, 12)
         self.assertEqual(self.at(30, 12), "candle")

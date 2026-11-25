@@ -10,7 +10,12 @@
   <div id="frame">
     <header>
       <span class="title">THE OBSIDIAN VAULT</span>
-      <span id="status" class="dim"></span>
+      <span id="status" class="warn"></span>
+      <nav id="hud">
+        <button type="button" id="ledger-flag" hidden title="Pages wait for you in the ledger (p)">! <span id="ledger-count"></span></button>
+        <button type="button" id="board-open" title="The notice board (b)">board <span id="board-count"></span></button>
+        <button type="button" id="menu-open" title="Menu and controls (Esc)">☰ menu</button>
+      </nav>
     </header>
 
     <main>
@@ -22,6 +27,40 @@
           <div class="board-body">
             <div id="board-list"></div>
             <div id="board-view"></div>
+          </div>
+        </div>
+        <div id="ctx" hidden></div>
+        <div id="ledger-pop" class="pop" hidden>
+          <div class="review-head"><span>LEDGER · waiting for you</span><button type="button" class="pop-close" id="ledger-close" title="Close (Esc)">×</button></div>
+          <div id="ledger-list"></div>
+          <div id="ledger-size" class="dim small"></div>
+        </div>
+        <div id="menu" class="pop" hidden>
+          <div class="review-head"><span>MENU</span><button type="button" class="pop-close" id="menu-close" title="Close (Esc)">×</button></div>
+          <div class="menu-body">
+            <div class="menu-col">
+              <div class="label">SETTINGS</div>
+              <button type="button" class="menu-btn" id="m-view">View: <span id="view-name"></span> (v)</button>
+              <button type="button" class="menu-btn" id="m-tall">Larger talk box (e)</button>
+              <button type="button" class="menu-btn" id="m-new">New conversation with Tally (n)</button>
+              <button type="button" class="menu-btn" id="m-board">Notice board (b)</button>
+              <button type="button" class="menu-btn" id="m-ledger">Ledger (p)</button>
+              <div class="label">THE VAULT</div>
+              <div id="menu-status" class="dim small"></div>
+            </div>
+            <div class="menu-col keys">
+              <div class="label">CONTROLS</div>
+              <div><b>click</b> walk there; click Tally to talk</div>
+              <div><b>right-click</b> inspect, look around, sit, lie down, ring</div>
+              <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> step</div>
+              <div><b>t</b> or <b>Enter</b> talk when next to Tally</div>
+              <div><b>Esc</b> stop talking; otherwise this menu</div>
+              <div><b>x</b> sit, <b>z</b> lie down (again to get up)</div>
+              <div><b>wheel</b> zoom the isometric view</div>
+              <div><b>v</b> view, <b>e</b> talk box size, <b>n</b> new conversation</div>
+              <div><b>b</b> notice board, <b>p</b> ledger</div>
+              <div><b>bell</b> in the hall: ring it to call Tally</div>
+            </div>
           </div>
         </div>
         <div id="review" hidden>
@@ -36,37 +75,6 @@
         </div>
       </section>
 
-      <aside id="side">
-        <div class="panel">
-          <div class="label">LOCATION</div>
-          <div id="room-name" class="room"></div>
-          <div id="room-desc" class="dim"></div>
-        </div>
-        <div class="panel">
-          <div class="label">NEARBY</div>
-          <div id="nearby"></div>
-        </div>
-        <div class="panel" id="ledger" hidden>
-          <div class="label">LEDGER <span id="ledger-count" class="count"></span></div>
-          <div id="ledger-list"></div>
-          <div id="ledger-size" class="dim small"></div>
-        </div>
-        <div class="panel">
-          <div class="label">NOTICE BOARD <span id="board-count" class="count"></span></div>
-          <button type="button" id="board-open" class="link-button">Read the board (b)</button>
-        </div>
-        <div class="panel keys">
-          <div class="label">KEYS</div>
-          <div><b>click</b> to walk, click Tally to talk</div>
-          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> step</div>
-          <div><b>t</b> talk when next to Tally</div>
-          <div><b>v</b> view: <span id="view-name"></span>, <b>wheel</b> zoom</div>
-          <div><b>esc</b> stop talking</div>
-          <div><b>n</b> new conversation</div>
-          <div><b>e</b> enlarge the talk box, <b>b</b> notice board</div>
-          <div><b>bell</b> in the hall: click to call Tally</div>
-        </div>
-      </aside>
     </main>
 
     <section id="bottom">

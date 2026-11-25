@@ -172,7 +172,8 @@ def make_handler(game: Game):
                         intent = game.layout.take_intent()
                         if intent:
                             game.moves.add("talk", intent.get("kind", ""), intent.get("name", ""),
-                                           intent.get("why", ""), room=intent.get("room", ""))
+                                           intent.get("why", ""), room=intent.get("room", ""),
+                                           how=intent.get("how", ""), item=intent.get("item", ""))
                             self.wfile.write(f"data: {json.dumps({'type': 'intent', **intent})}\n\n".encode())
                         if game.layout.version() != layout_before:
                             self.wfile.write(f"data: {json.dumps({'type': 'world'})}\n\n".encode())

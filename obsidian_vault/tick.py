@@ -114,11 +114,13 @@ def parse(reply: str, world: dict) -> dict:
             sp = spots[str(step["go"]).strip().lower()]
             plan.append({"go": sp["id"], "at": sp["at"], "room": sp.get("room", ""), "name": sp["name"],
                          "why": " ".join(str(step.get("why") or "").split())[:160]})
+    rest = str(data.get("rest") or "").strip().lower()
+    rest = rest if rest in ("sit", "lie", "walk") else ""
     spot = spots.get(go)
     if not spot:
-        return {"go": "stay", "at": None, "say": say, "why": why, "plan": plan}
+        return {"go": "stay", "at": None, "say": say, "why": why, "plan": plan, "rest": rest}
     return {"go": spot["id"], "at": spot["at"], "room": spot.get("room", ""), "name": spot["name"], "say": say,
-            "why": why, "plan": plan}
+            "why": why, "plan": plan, "rest": rest}
 
 
 class Ticker:
@@ -145,9 +147,7 @@ class Ticker:
             self.lock.release()
         res = parse(reply, world)
         # Write the choice down in Tally's own words, so the conversation and the next tick remember it.
-        if res["go"] == "stay":
-            self.moves.add("tick", "stay", "", res.get("why", ""), res.get("say", ""), res.get("plan"))
-        else:
-            self.moves.add("tick", "go", res["name"], res.get("why", ""), res.get("say", ""), res.get("plan"),
-                           res.get("room", ""))
+        kind = "settle" if res.get("rest") else ("stay" if res["go"] == "stay" else "go")
+        self.moves.add("tick", kind, res.get("name", "") if res["go"] != "stay" else "", res.get("why", ""),
+                       res.get("say", ""), res.get("plan"), res.get("room", ""), how=res.get("rest", ""))
         return res

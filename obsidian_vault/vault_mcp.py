@@ -180,6 +180,23 @@ GAME_TOOLS = [
         }, ["why"]),
     },
     {
+        "name": "settle",
+        "description": (
+            "Sit, lie down or walk on a piece of furniture, or sit or lie on the floor, when your reply ends. "
+            "how: 'sit', 'lie' or 'walk' (a treadmill). item: optional furniture kind (chair, bench, couch, hammock, "
+            "bed, cushion, treadmill), or 'floor' to sit or lie on the floor. place: optional place id to go to "
+            "first (e.g. 'pool' to sit on the floor by the pool); without it, the nearest suitable piece, or the "
+            "floor where you stand. It holds like stay_here: until the game next asks you, or for the minutes you give."
+        ),
+        "inputSchema": _schema({
+            "how": {**S, "description": "sit, lie or walk."},
+            "why": {**S, "description": "Why, in a few words; you will be reminded of it."},
+            "item": {**S, "description": "Optional: chair, bench, couch, hammock, bed, cushion, treadmill or floor."},
+            "place": {**S, "description": "Optional place id to go to first."},
+            "minutes": {**N, "description": "Optional firm promise (at most 120)."},
+        }, ["how", "why"]),
+    },
+    {
         "name": "wander",
         "description": "Drop any promise to stay or follow; go back to moving about the vault on your own.",
         "inputSchema": _schema({}, []),
@@ -197,7 +214,8 @@ GAME_TOOLS = [
             "and refused with the reason if it breaks one. Walls, doors, shelves and your desk cannot be moved."
         ),
         "inputSchema": _schema({
-            "item": {**S, "description": "One of: candle, brazier, papers, mat, pool, scribe_desk, map_table, graph_node, graph_edge."},
+            "item": {**S, "description": "One of: candle, brazier, papers, mat, pool, scribe_desk, map_table, graph_node, graph_edge, "
+                                         "chair (back to the north-west), chair_ne (back to the north-east), bench, couch, table, hammock, bed, treadmill, cushion."},
             "x": I, "y": I,
         }, ["item", "x", "y"]),
     },
@@ -231,6 +249,9 @@ def call_game(world: World, name: str, args: dict) -> str:
         return world.set_intent("stay", why=args.get("why", ""), minutes=args.get("minutes") or 0)
     if name == "walk_with_kristian":
         return world.set_intent("follow", why=args.get("why", ""), minutes=args.get("minutes") or 0)
+    if name == "settle":
+        return world.settle(args.get("how", ""), args.get("why", ""), args.get("item", ""),
+                            args.get("place", ""), args.get("minutes") or 0)
     if name == "wander":
         return world.set_intent("free")
     if name == "look_at_map":

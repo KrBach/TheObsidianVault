@@ -1,7 +1,7 @@
 // Isometric view of the vault.
 //
 // Every tile is still drawn by name. A tile's `iso` block in world/tiles.json says how:
-//   shape   which placeholder to draw (block, floor, box, pool, orb, flame, papers, mat, door, edge)
+//   shape   which placeholder to draw (block, floor, box, pool, orb, flame, papers, mat, door, edge, chair)
 //   h       height in pixels at zoom 1 (walls are 56)
 //   f       footprint, 0..1 of a tile
 //   color   base colour; faces are shaded from it
@@ -214,6 +214,18 @@ export class IsoRenderer {
     return { x: gx, y: gy };
   }
 
+  // A figure stands taller than its tile: a point on its body picks the figure's cell.
+  pickFigure(mx, my, figures) {
+    if (!this.origin) return null;
+    const wx = (mx - this.origin[0]) / this.zoom;
+    const wy = (my - this.origin[1]) / this.zoom;
+    for (const e of figures) {
+      const [sx, sy] = IsoRenderer.toScreen(e.rx, e.ry);
+      if (Math.abs(wx - sx) <= 9 && wy >= sy - 40 && wy <= sy + 4) return { x: e.x, y: e.y };
+    }
+    return null;
+  }
+
   // ---------- primitives ----------
 
   diamond(cx, cy, w, h) {
@@ -353,6 +365,107 @@ export class IsoRenderer {
         break;
       }
 
+      case "chair": {
+        // A seat on four legs, with a back along one far edge ("nw" or "ne"); a bench has no back.
+        const f = iso.f || 0.5, hw = (TW * f) / 2, hh = (TH * f) / 2, seat = iso.h || 9;
+        const corners = [[sx - hw, sy], [sx, sy - hh], [sx + hw, sy], [sx, sy + hh]]; // left, top, right, bottom
+        c.globalAlpha = alpha;
+        c.strokeStyle = rgb(base, light, 0.45);
+        c.lineWidth = 2;
+        for (const [lx, ly] of corners) {
+          const ix = lx + (sx - lx) * 0.15, iy = ly + (sy - ly) * 0.15;
+          c.beginPath(); c.moveTo(ix, iy); c.lineTo(ix, iy - seat + 2); c.stroke();
+        }
+        c.lineWidth = 1;
+        c.globalAlpha = 1;
+        this.box(sx, sy - seat + 3, f, 3, base, light, alpha);
+        const back = cut ? 0 : iso.back || 0;
+        if (back) {
+          const [a, b] = iso.backEdge === "ne" ? [corners[1], corners[2]] : [corners[0], corners[1]];
+          const top = sy - seat;
+          c.globalAlpha = alpha;
+          c.fillStyle = rgb(base, light, iso.backEdge === "ne" ? 0.62 : 0.85);
+          c.beginPath();
+          c.moveTo(a[0], a[1] + top - sy); c.lineTo(b[0], b[1] + top - sy);
+          c.lineTo(b[0], b[1] + top - sy - back); c.lineTo(a[0], a[1] + top - sy - back);
+          c.closePath(); c.fill();
+          c.strokeStyle = rgb(base, light, 1.3);
+          c.beginPath(); c.moveTo(a[0], a[1] + top - sy - back); c.lineTo(b[0], b[1] + top - sy - back); c.stroke();
+          c.globalAlpha = 1;
+        }
+        break;
+      }
+
+      case "hammock": {
+        // two posts at the left and right corners, a canvas sling sagging between them
+        const f = iso.f || 0.9, hw = (TW * f) / 2, top = h + 16;
+        c.globalAlpha = alpha;
+        c.strokeStyle = rgb([70, 50, 34], light, 1);
+        c.lineWidth = 3;
+        for (const px of [sx - hw, sx + hw]) { c.beginPath(); c.moveTo(px, sy); c.lineTo(px, sy - top); c.stroke(); }
+        c.lineWidth = 1;
+        c.strokeStyle = rgb(base, light, 0.8);
+        c.beginPath(); c.moveTo(sx - hw, sy - top + 2); c.lineTo(sx - hw * 0.6, sy - h - 2); c.stroke();
+        c.beginPath(); c.moveTo(sx + hw, sy - top + 2); c.lineTo(sx + hw * 0.6, sy - h - 2); c.stroke();
+        c.fillStyle = rgb(base, light, 0.95);
+        c.beginPath();
+        c.moveTo(sx - hw * 0.6, sy - h - 3);
+        c.quadraticCurveTo(sx, sy - h + 9, sx + hw * 0.6, sy - h - 3);
+        c.quadraticCurveTo(sx, sy - h + 3, sx - hw * 0.6, sy - h - 3);
+        c.fill();
+        c.globalAlpha = 1;
+        break;
+      }
+
+      case "bed": {
+        this.box(sx, sy, iso.f || 0.85, h, base, light, alpha);
+        const f = iso.f || 0.85, hw = (TW * f) / 2, hh = (TH * f) / 2;
+        // a pillow at the far (top) corner
+        c.globalAlpha = alpha;
+        c.fillStyle = rgb(this.col(iso.pillow || "#c8c0b0"), light, 1);
+        this.diamond(sx, sy - h - hh * 0.55, hw * 0.75, hh * 0.6);
+        c.fill();
+        c.globalAlpha = 1;
+        break;
+      }
+
+      case "treadmill": {
+        const f = iso.f || 0.8, hw = (TW * f) / 2, hh = (TH * f) / 2;
+        this.box(sx, sy, f, h, base, light, alpha);
+        // belt slats, moving slowly
+        c.globalAlpha = alpha * 0.6;
+        c.strokeStyle = rgb(base, light, 1.8);
+        for (let i = 0; i < 4; i++) {
+          const k = ((i / 4 + t * 0.4) % 1) - 0.5;
+          c.beginPath();
+          c.moveTo(sx - hw * 0.5 + k * hw, sy - h - hh * 0.5 + k * hh);
+          c.lineTo(sx + hw * 0.5 + k * hw, sy - h + hh * 0.5 + k * hh - hh);
+          c.stroke();
+        }
+        // a rail at the far end
+        c.globalAlpha = alpha;
+        c.strokeStyle = rgb(this.col(iso.rail || "#6a6a78"), light, 1.2);
+        c.lineWidth = 2;
+        const ax = sx - hw * 0.5, ay = sy - hh * 0.5, bx = sx + hw * 0.5, by = sy - hh * 0.5;
+        c.beginPath();
+        c.moveTo(ax, ay - h); c.lineTo(ax, ay - h - 22); c.lineTo(bx, by - h - 22); c.lineTo(bx, by - h);
+        c.stroke();
+        c.lineWidth = 1;
+        c.globalAlpha = 1;
+        break;
+      }
+
+      case "cushion": {
+        const f = iso.f || 0.45, rw = (TW * f) / 2, rh = (TH * f) / 2;
+        c.globalAlpha = alpha;
+        c.fillStyle = rgb(base, light, 0.6);
+        c.beginPath(); c.ellipse(sx, sy, rw, rh, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = rgb(base, light, 1.15);
+        c.beginPath(); c.ellipse(sx, sy - h, rw * 0.95, rh * 0.95, 0, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 1;
+        break;
+      }
+
       case "flame": {
         this.box(sx, sy, iso.f || 0.35, height, base, light);
         const flick = 0.8 + 0.2 * Math.sin(t * 13 + x) * Math.sin(t * 9 + y);
@@ -454,10 +567,36 @@ export class IsoRenderer {
     const def = this.creatures[e.kind];
     const iso = def.iso || {};
     const [sx, sy] = IsoRenderer.toScreen(e.rx, e.ry);
+    if (e.pose && !this.posing) {
+      // Poses are placeholders until there are sprites for them: sitting sinks the figure onto the
+      // seat and hides what would be below its front edge; lying turns the figure on its side;
+      // walking in place bobs.
+      const h = e.pose.h || 0;
+      c.save();
+      if (e.pose.how === "sit") {
+        const edge = sy - h + (e.pose.floor ? 2 : 4);
+        c.beginPath();
+        c.rect(sx - 120, edge - 400, 240, 400);
+        c.clip();
+        c.translate(0, e.pose.floor ? 17 : Math.round(h * 1.1));
+      } else if (e.pose.how === "lie") {
+        // pivot at the middle of the surface; the figure lies along the tile's long screen axis
+        const py = sy - h - 3;
+        c.translate(sx, py);
+        c.rotate(-Math.PI / 2 * 0.86);
+        c.scale(0.92, 0.92);
+        c.translate(-sx, -(sy - 22)); // the figure's middle (about 22 px above its feet) onto the pivot
+      } else if (e.pose.how === "walk") {
+        c.translate(0, -h - Math.abs(Math.sin(t * 9)) * 2);
+      }
+      this.posing = true;
+      try { this.drawCreature(e, t, light); } finally { this.posing = false; c.restore(); }
+      return;
+    }
     const base = this.col(iso.color || def.fg || "#ccc");
 
     // selection ring under the figure
-    if (iso.ring) {
+    if (iso.ring && !(this.posing && e.pose?.how === "lie")) {
       c.strokeStyle = iso.ring;
       c.globalAlpha = 0.85;
       c.lineWidth = 2;

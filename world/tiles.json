@@ -314,6 +314,204 @@
         "floor": "#1d1628",
         "color": "#b08646"
       }
+    },
+    "chair": {
+      "fg": "#a07a4a",
+      "bg": "#0a0710",
+      "solid": false,
+      "glyph": "h",
+      "name": "chair",
+      "desc": "A plain wooden chair.",
+      "iso": {
+        "shape": "chair",
+        "h": 9,
+        "back": 17,
+        "f": 0.5,
+        "backEdge": "nw",
+        "floor": "#1d1628",
+        "color": "#5a3c22"
+      },
+      "use": {
+        "poses": [
+          "sit"
+        ],
+        "h": 9
+      }
+    },
+    "chair_ne": {
+      "fg": "#a07a4a",
+      "bg": "#0a0710",
+      "solid": false,
+      "glyph": "h",
+      "name": "chair",
+      "desc": "A plain wooden chair.",
+      "iso": {
+        "shape": "chair",
+        "h": 9,
+        "back": 17,
+        "f": 0.5,
+        "backEdge": "ne",
+        "floor": "#1d1628",
+        "color": "#5a3c22"
+      },
+      "use": {
+        "poses": [
+          "sit"
+        ],
+        "h": 9
+      }
+    },
+    "bench": {
+      "fg": "#a07a4a",
+      "bg": "#0a0710",
+      "solid": false,
+      "glyph": "▬",
+      "name": "bench",
+      "desc": "A low bench of dark wood, for waiting.",
+      "iso": {
+        "shape": "chair",
+        "h": 8,
+        "back": 0,
+        "f": 0.75,
+        "floor": "#1d1628",
+        "color": "#4a3020"
+      },
+      "use": {
+        "poses": [
+          "sit",
+          "lie"
+        ],
+        "h": 8
+      }
+    },
+    "couch": {
+      "glyph": "∩",
+      "fg": "#9a5a7a",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "couch",
+      "desc": "A low couch with a worn velvet back, long enough to stretch out on.",
+      "iso": {
+        "shape": "chair",
+        "h": 7,
+        "back": 14,
+        "f": 0.85,
+        "backEdge": "nw",
+        "arms": true,
+        "color": "#4a2238",
+        "floor": "#1d1628"
+      },
+      "use": {
+        "poses": [
+          "sit",
+          "lie"
+        ],
+        "h": 7
+      }
+    },
+    "hammock": {
+      "glyph": ")",
+      "fg": "#c0a878",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "hammock",
+      "desc": "A canvas hammock slung between two posts.",
+      "iso": {
+        "shape": "hammock",
+        "h": 12,
+        "f": 0.9,
+        "color": "#8a7a5a",
+        "floor": "#1d1628"
+      },
+      "use": {
+        "poses": [
+          "lie",
+          "sit"
+        ],
+        "h": 12
+      }
+    },
+    "bed": {
+      "glyph": "Ξ",
+      "fg": "#8a84a0",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "bed",
+      "desc": "A narrow bed with a grey blanket.",
+      "iso": {
+        "shape": "bed",
+        "h": 8,
+        "f": 0.85,
+        "color": "#3a3448",
+        "pillow": "#c8c0b0",
+        "floor": "#1d1628"
+      },
+      "use": {
+        "poses": [
+          "lie",
+          "sit"
+        ],
+        "h": 8
+      }
+    },
+    "treadmill": {
+      "glyph": "Ш",
+      "fg": "#7a7a88",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "treadmill",
+      "desc": "A walking belt with a rail to hold. You can walk a long way and stay where you are.",
+      "iso": {
+        "shape": "treadmill",
+        "h": 4,
+        "f": 0.8,
+        "color": "#2a2830",
+        "rail": "#6a6a78",
+        "floor": "#1d1628"
+      },
+      "use": {
+        "poses": [
+          "walk"
+        ],
+        "h": 4
+      }
+    },
+    "cushion": {
+      "glyph": "o",
+      "fg": "#b06a4a",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "cushion",
+      "desc": "A fat floor cushion.",
+      "iso": {
+        "shape": "cushion",
+        "h": 3,
+        "f": 0.45,
+        "color": "#6a3a2a",
+        "floor": "#1d1628"
+      },
+      "use": {
+        "poses": [
+          "sit",
+          "lie"
+        ],
+        "h": 3
+      }
+    },
+    "table": {
+      "glyph": "╥",
+      "fg": "#a07a4a",
+      "bg": "#0a0710",
+      "solid": true,
+      "name": "table",
+      "desc": "A small reading table.",
+      "iso": {
+        "shape": "box",
+        "h": 13,
+        "f": 0.6,
+        "color": "#5a3c22",
+        "floor": "#1d1628"
+      }
     }
   },
   "creatures": {
@@ -364,8 +562,15 @@
       "portrait": {
         "image": "portraits/tally.jpg",
         "videos": {
-          "thinking": ["portraits/tally-think-1.mp4", "portraits/tally-think-2.mp4", "portraits/tally-think-3.mp4"],
-          "speaking": ["portraits/tally-talk-1.mp4", "portraits/tally-talk-2.mp4"]
+          "thinking": [
+            "portraits/tally-think-1.mp4",
+            "portraits/tally-think-2.mp4",
+            "portraits/tally-think-3.mp4"
+          ],
+          "speaking": [
+            "portraits/tally-talk-1.mp4",
+            "portraits/tally-talk-2.mp4"
+          ]
         },
         "frame": "#5fe0d0",
         "states": {
