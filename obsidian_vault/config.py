@@ -12,7 +12,7 @@ from . import minitoml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-DEFAULT_FOLDERS = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
+DEFAULT_FOLDERS = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments", "denizens"]
 WRITE_MODES = ("off", "review", "direct")
 # Tools a "session" errand may use without asking: your own Claude Code setup, skills and browser.
 DEFAULT_SESSION_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch",

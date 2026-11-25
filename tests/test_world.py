@@ -31,6 +31,13 @@ class WorldTest(unittest.TestCase):
             spot = next(s for s in world["spots"] if s["id"] == sid)
             self.assertEqual(self.at(*spot["at"]), kind)
 
+    def test_a_built_in_place_goes_when_its_furniture_moves(self):
+        self.w.clear(22, 13)  # the hall bench...
+        self.w.place("bench", 24, 13)  # ...moved beside the bell
+        ids = [s["id"] for s in self.w.load()["spots"]]
+        self.assertNotIn("hall_bench", ids)
+        self.assertIn("couch", ids)  # the rest stay
+
     def test_settle_intent(self):
         msg = self.w.settle("sit", "rest my feet", item="floor", place="pool")
         self.assertIn("on the floor by the still pool", msg)

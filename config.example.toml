@@ -73,7 +73,7 @@ soul_direct = true
 
 # Theme folders where Tally may propose note edits and new notes.
 # bootstrap.md, archive/, templates/ and hidden folders are never written.
-folders = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
+folders = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments", "denizens"]
 
 # Pending changes, backups and the write journal (git-ignored).
 state_dir = ".vault-state"

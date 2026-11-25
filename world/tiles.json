@@ -297,6 +297,43 @@
         "floor": "#1d1628"
       }
     },
+    "fireplace": {
+      "glyph": "◘",
+      "fg": "#ff9a3c",
+      "bg": "#1a0f0a",
+      "solid": true,
+      "name": "fireplace",
+      "anim": "flicker",
+      "desc": "A fireplace of dark stone set into the Hearth's north wall, with a plain mantel above. The room is named for it; the fire never quite goes out.",
+      "lamp": true,
+      "iso": {
+        "shape": "fireplace",
+        "h": 34,
+        "color": "#262026",
+        "mantel": "#5a3c22",
+        "fire": true,
+        "light": {
+          "color": "#ff9440",
+          "radius": 8,
+          "strength": 1.05,
+          "flicker": true
+        }
+      }
+    },
+    "fireplace_side": {
+      "glyph": "█",
+      "fg": "#5a4a50",
+      "bg": "#1a0f0a",
+      "solid": true,
+      "name": "fireplace",
+      "desc": "The stone cheek of the fireplace, warm to the touch, with the mantel running across it.",
+      "iso": {
+        "shape": "fireplace",
+        "h": 34,
+        "color": "#262026",
+        "mantel": "#5a3c22"
+      }
+    },
     "bell": {
       "glyph": "♪",
       "fg": "#e0b860",

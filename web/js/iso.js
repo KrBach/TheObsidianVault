@@ -537,6 +537,40 @@ export class IsoRenderer {
         break;
       }
 
+      case "fireplace": {
+        // Dark stone against the north wall, a mantel across the top, and on the middle tile
+        // ("fire": true) an opening on the face toward the room with the fire in it.
+        const H = cut ? Math.min(h, 12) : h;
+        this.box(sx, sy, 1, H, base, light, alpha);
+        if (!cut) this.box(sx, sy - H + 1, 1.08, 4, this.col(iso.mantel || "#5a3c22"), light, alpha);
+        if (iso.fire && !cut) {
+          // the face toward the room runs from the left corner L to the bottom corner B
+          const L = [sx - TW / 2, sy], B = [sx, sy + TH / 2];
+          const at = (u, v) => [L[0] + (B[0] - L[0]) * u, L[1] + (B[1] - L[1]) * u - v];
+          c.fillStyle = "#0b0608";
+          c.beginPath();
+          c.moveTo(...at(0.2, 0)); c.lineTo(...at(0.8, 0)); c.lineTo(...at(0.8, 15));
+          for (let i = 1; i < 8; i++) { const u = 0.8 - (0.6 * i) / 8; c.lineTo(...at(u, 15 + 5 * Math.sin((Math.PI * i) / 8))); }
+          c.lineTo(...at(0.2, 15));
+          c.closePath();
+          c.fill();
+          // the fire: a few flickering tongues and a glow spilling out
+          for (let i = 0; i < 4; i++) {
+            const u = 0.3 + i * 0.13, fl = 0.6 + 0.4 * Math.abs(Math.sin(t * (7 + i) + i * 1.7));
+            const [fx, fy] = at(u, 1);
+            c.fillStyle = i % 2 ? "rgba(255,190,90,0.9)" : "rgba(255,120,40,0.9)";
+            c.beginPath();
+            c.moveTo(fx - 3, fy); c.quadraticCurveTo(fx - 1, fy - 8 * fl, fx + 0.5, fy - 13 * fl);
+            c.quadraticCurveTo(fx + 2, fy - 6 * fl, fx + 3, fy);
+            c.closePath();
+            c.fill();
+          }
+          const [gx, gy] = at(0.5, 6);
+          this.glow(gx, gy, 30 * (0.85 + 0.15 * Math.sin(t * 9)), [255, 140, 60], 0.45);
+        }
+        break;
+      }
+
       case "noticeboard": {
         // A cork board on two posts along the cell's north-west edge, facing the room. Papers are
         // pinned to it, one per thing on the notice board (up to six); a red pin marks something new.

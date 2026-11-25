@@ -79,13 +79,22 @@ class World:
         world = self.base()
         ov = self.overlay() if overlay is None else overlay
         rows = [list(r) for r in world["map"]]
+        moved = set()  # cells where the furniture of the built map was cleared or replaced
         for key, ch in ov["tiles"].items():
             x, y = (int(v) for v in key.split(","))
             if 0 <= y < len(rows) and 0 <= x < len(rows[y]) and ch in world["legend"]:
+                base_id = world["legend"].get(rows[y][x], "")
+                if base_id not in FLOORS and base_id not in MOVABLE:
+                    continue  # the built map has something fixed there now (a wall, the fireplace): it wins
+                was = world["tiles"].get(base_id, {})
+                if was.get("use") and ch != rows[y][x]:
+                    moved.add((x, y))
                 rows[y][x] = ch
         world["map"] = ["".join(r) for r in rows]
-        base_ids = {s["id"] for s in world.get("spots", [])}
-        world["spots"] = list(world.get("spots", [])) + [
+        # A built-in place on a piece of furniture that has since moved points at nothing: drop it.
+        built = [s for s in world.get("spots", []) if tuple(s["at"]) not in moved]
+        base_ids = {s["id"] for s in built}
+        world["spots"] = built + [
             {**s, "mine": True} for s in ov["spots"] if s.get("id") not in base_ids]
         return world
 
