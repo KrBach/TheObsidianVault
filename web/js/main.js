@@ -945,6 +945,9 @@ const KEYS = {
 };
 
 window.addEventListener("keydown", (e) => {
+  if (!state.world) return; // the door is still closed: typing goes to the login form
+  const t = e.target;
+  if (t !== input && t?.matches?.("input, textarea, select, [contenteditable]")) return; // typing in a field is not a hotkey
   touched();
   if (!ctxEl.hidden) {
     if (e.key === "Escape") { e.preventDefault(); hideCtx(); }
