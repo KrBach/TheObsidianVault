@@ -1,4 +1,10 @@
-# Copy this file to config.toml and edit it. config.toml is git-ignored.
+# Placeholders only: this file is in the public repo, so it never holds a real path or name.
+# Your real settings live in a local file outside the game's folder, so updates never touch it:
+#   macOS    ~/Library/Application Support/TheObsidianVault/config.toml
+#   Linux    ~/.config/TheObsidianVault/config.toml
+#   Windows  %APPDATA%\TheObsidianVault\config.toml
+# The game creates it from this file on first run (an old config.toml in the game folder is moved
+# there instead). Set things in the game (Esc → Settings and Esc → Character) or edit that file by hand.
 
 [names]
 # Who is who. The code never names a real person; these go into the game's text and what the
@@ -10,8 +16,8 @@ companion = "Tally"
 owner_portrait = ""
 
 [tally]
-# Folder that holds Tally's shared core (bootstrap.md, soul.md).
-# This is read, never written. Your private notes stay out of the repo.
+# Folder that holds Tally's shared core (bootstrap.md, soul.md): your Private vault.
+# Set it in the game (Esc → Settings). Your private notes stay out of the repo.
 core_dir = "~/path/to/obsidian/Private"
 
 # Time zone for log timestamps (an IANA name such as "Europe/Berlin"). Empty = this computer's.
@@ -22,6 +28,7 @@ core_files = ["bootstrap.md", "soul.md"]
 
 # The Work vault (optional). Tally may read it for work tasks (INDEX.md first), never write it,
 # and never copy work content into the Private vault. Leave empty to keep work out of the game.
+# Also in the game: Esc → Settings.
 work_dir = ""
 
 # Context layer for this use case, layered on top of the core.
@@ -75,7 +82,8 @@ soul_direct = true
 # bootstrap.md, archive/, templates/ and hidden folders are never written.
 folders = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
 
-# Pending changes, backups and the write journal (git-ignored).
+# Pending changes, backups, the write journal, your password hash and the uploaded portrait
+# (git-ignored). A relative path is inside the game's folder.
 state_dir = ".vault-state"
 
 [server]
@@ -101,6 +109,8 @@ model = ""
 # Tools a session errand may use without asking. Names of your connectors' tools in Claude Code
 # start with mcp__<server>__; a bare mcp__<server> allows all of that server's tools.
 session_tools = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch", "mcp__claude-in-chrome"]
+# The browser a session errand gets: "safari", "chrome" or "off". Also in the game: Esc → Settings.
+browser = "safari"
 
 [board]
 # Vault folders the notice board shows (read-only): notes, images and HTML pages.

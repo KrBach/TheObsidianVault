@@ -2,7 +2,7 @@
 
 This guide is for anyone who wants a setup like this one: an AI assistant with one stable identity that you can reach from Claude Code, the Claude apps and a small game where you walk into your notes and talk to it.
 
-The repo started as one person's working setup and is shared as an example. Nothing personal is in the code: you set your own name, your companion's name (default **Tally**) and your portrait in `config.toml` (see [Make it yours](#7-make-it-yours)).
+The repo started as one person's working setup and is shared as an example. Nothing personal is in the code: you set your own name, your companion's name (default **Tally**), your vault folders and your portrait in the game's menu, and they are kept in a settings file on your computer, outside the repo (see [Run the game](#4-run-the-game) and [Make it yours](#7-make-it-yours)).
 
 All paths, names and folder names below are placeholders. Replace them with your own.
 
@@ -18,7 +18,7 @@ Obsidian vault (private, on your machine)          this repo (public)
 ```
 
 - **The vault holds the assistant's identity.** Every place you use the assistant (Claude Code, a Claude Project, the game) loads the same two files, so it behaves the same everywhere. Rules for one place are layered on top and never change the core.
-- **The repo holds only the game and its context layer.** Nothing from the vault is copied into it, and your config file with the vault path is git-ignored.
+- **The repo holds only the game and its context layer.** Nothing from the vault is copied into it, and your settings file with the vault path lives outside it.
 - **The game runs on your computer.** It uses your Claude Code login, so you need no API key.
 
 ## 1. What you need
@@ -110,10 +110,16 @@ Rules that only apply in one place, such as "replies in the game are short", go 
 ```sh
 git clone https://github.com/<you>/TheObsidianVault.git
 cd TheObsidianVault
-cp config.example.toml config.toml
+python3 -m obsidian_vault
 ```
 
-Edit `config.toml`. The important lines:
+On first run the game creates your **local settings file**, outside the game's folder, so pulling a new version or downloading a fresh copy never touches it:
+
+- macOS: `~/Library/Application Support/TheObsidianVault/config.toml`
+- Linux: `~/.config/TheObsidianVault/config.toml`
+- Windows: `%APPDATA%\TheObsidianVault\config.toml`
+
+It starts as a copy of `config.example.toml` (placeholders only) with the vault folder and your name left empty. Fill them in from the game: log in, press Esc, and choose **Settings** for the vault folders and the errands browser, and **Character** for your name. Changes are saved to the file at once. You can also edit the file by hand and restart the game. The important lines:
 
 ```toml
 [names]
@@ -133,17 +139,16 @@ claude_path = ""                  # only if the game cannot find `claude`: paste
 [writes]
 mode = "review"                   # every note change waits for your approval in the game
 folders = ["games", "projects"]   # theme folders the assistant may propose changes in
+
+[errands]
+browser = "safari"                # browser for session errands: "safari", "chrome" or "off"
 ```
 
-Then start it:
+The game opens http://127.0.0.1:8765. The terminal says where the settings file is (in a short form) and whether the core files loaded. If they are missing, set the Private vault folder in Esc → Settings, which checks that the folder exists.
 
-```sh
-python3 -m obsidian_vault
-```
+If you used an older version that kept `config.toml` in the game folder, the first run moves it to the local file and leaves `config.toml.migrated` behind. Names set in the game before (`.vault-state/settings.json`) are folded in too. This happens once, and nothing is deleted.
 
-It opens http://127.0.0.1:8765. The terminal says whether the core files loaded. If it says they are missing, check `core_dir`.
-
-`config.toml` and the `.vault-state/` folder are git-ignored. They hold your vault path, pending changes, backups, the conversation id, your password hash and your login sessions. Never commit them.
+The `.vault-state/` folder in the game folder is git-ignored. It holds pending changes, backups, the conversation id, your password hash, your uploaded portrait and your login sessions. Never commit it. To keep it across a fresh download as well, point `[writes] state_dir` in the settings file at a folder outside the game.
 
 ## 5. Log in
 
@@ -173,13 +178,15 @@ Errands are bigger jobs the assistant writes out and leaves on your desk in the 
 - **A fine-grained personal access token** (github.com → Settings → Developer settings → Fine-grained tokens):
   - Repository access: only your fork of this repo.
   - Permissions: Contents read and write, plus Pull requests read and write if you want the assistant to open PRs from another Claude session.
-  - Use it as your git password for github.com, stored by your system's credential helper (`git config --global credential.helper osxkeychain` on a Mac). Never put the token in `config.toml`, the vault or the repo.
+  - Use it as your git password for github.com, stored by your system's credential helper (`git config --global credential.helper osxkeychain` on a Mac). Never put the token in the settings file, the vault or the repo.
 
-Review an errand's branch and merge it yourself on GitHub. The `[errands]` section of `config.toml` sets the limits: timeout, how many run at once, the model, and which tools a session errand may use.
+Review an errand's branch and merge it yourself on GitHub. The `[errands]` section of the settings file sets the limits: timeout, how many run at once, the model, which tools a session errand may use, and the browser it should use.
+
+**Your name on commits.** Commits are public. If git on this computer uses an address you would rather not publish (`git config user.email`), set a GitHub noreply address for this repo (`git config user.email <id>+<you>@users.noreply.github.com`).
 
 ## 7. Make it yours
 
-- **Names:** open the menu in the game (Esc) and choose **Character** to set your name, your companion's name, a portrait, the time zone and your password. You can also set `[names] owner` and `companion` in `config.toml`; what you set in the game wins. The code and the context files never name anyone. They say OWNER where your name goes and Tally where the companion's does, and the game fills in your names everywhere: on screen, in the login card, in what the companion is told, in tool texts, in the short check-ins and in errand briefs. Your companion's character itself comes from your `soul.md`.
+- **Names:** open the menu in the game (Esc) and choose **Character** to set your name, your companion's name, a portrait, the time zone and your password. Names and the time zone are written to `[names]` and `[tally]` in your settings file, the same file you can edit by hand. The code and the context files never name anyone. They say OWNER where your name goes and Tally where the companion's does, and the game fills in your names everywhere: on screen, in the login card, in what the companion is told, in tool texts, in the short check-ins and in errand briefs. Your companion's character itself comes from your `soul.md`.
 - **Portrait:** put an image in `web/portraits/` and set `[names] owner_portrait = "portraits/<file>"`. The companion's portrait and animations are set in `world/tiles.json` under `creatures.tally`.
 - **The map:** `world/vault.json` is the layout. Run `python3 -m obsidian_vault.check_map` after editing it. The companion can also move furniture and name places itself, and those changes live in `.vault-state/world.json`.
 - **The rules for the game:** `context/the-vault-game.md` (talking in the game), `context/tally-tick.md` (the short check-ins between conversations) and `context/tally-guest.md` (the public version for guests). Edit them freely, and keep writing OWNER where your name should go.
@@ -191,6 +198,8 @@ python3 -m unittest discover -s tests
 python3 -m obsidian_vault.check_map
 ```
 
+The tests include a privacy guard (`tests/test_pii.py`). It fails if a file in the repo holds a home-folder path (such as `/Users/<name>/...`), an email address other than placeholders like `@example.com`, or a phone number. The tests never read or write your real settings file.
+
 Then in the game:
 
 1. Log in.
@@ -200,7 +209,8 @@ Then in the game:
 
 ## Privacy checklist
 
-- The vault, `config.toml` and `.vault-state/` stay on your machine. Only the code and the game's context files are in the repo.
+- The vault, your settings file (outside the game folder) and `.vault-state/` stay on your machine. Only the code and the game's context files are in the repo.
+- Guests never see your vault paths or the Settings and Character windows.
 - Everything the assistant reads in a conversation, including the core files and any note it opens, is sent to Claude as part of that conversation.
 - With `writes.mode = "review"`, note changes wait for you. The assistant's own files, `soul.md` and the failure log, are written at once with a backup; set `soul_direct = false` to review those too.
 - Keep tokens and passwords out of notes and out of the repo. Use your system's keychain.
