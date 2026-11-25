@@ -633,6 +633,30 @@ export class IsoRenderer {
         break;
       }
 
+      case "bowl": { // the cat's bowl: shallow clay, with food in it for a while after a meal
+        const f = iso.f || 0.3, rw = (TW * f) / 2, rh = (TH * f) / 2;
+        c.fillStyle = rgb(base, light, 0.7);
+        c.beginPath(); c.ellipse(sx, sy, rw, rh, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = rgb(base, light, 1.2);
+        c.beginPath(); c.ellipse(sx, sy - 3, rw, rh, 0, 0, Math.PI * 2); c.fill();
+        const full = this.world.catBowlFull?.();
+        c.fillStyle = full ? rgb([150, 96, 60], light, 1) : rgb([40, 30, 34], light, 1);
+        c.beginPath(); c.ellipse(sx, sy - 3, rw * 0.7, rh * 0.6, 0, 0, Math.PI * 2); c.fill();
+        break;
+      }
+
+      case "quilltoy": { // a quill tied to a string, lying on the floor
+        c.strokeStyle = rgb([150, 140, 120], light, 1); c.lineWidth = 1;
+        c.beginPath(); c.moveTo(sx - 14, sy + 4); c.quadraticCurveTo(sx - 6, sy - 4, sx + 2, sy + 1); c.stroke();
+        c.save(); c.translate(sx + 6, sy); c.rotate(-0.5);
+        c.fillStyle = rgb(base, light, 1.1);
+        c.beginPath(); c.ellipse(0, 0, 7, 2.2, 0, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = rgb([90, 80, 70], light, 1);
+        c.beginPath(); c.moveTo(-8, 0); c.lineTo(7, 0); c.stroke();
+        c.restore();
+        break;
+      }
+
       case "mat":
         c.fillStyle = rgb(base, light, 1);
         this.diamond(sx, sy, TW * 0.7, TH * 0.7);
@@ -659,46 +683,70 @@ export class IsoRenderer {
 
   // ---------- creatures ----------
 
-  // The cat, drawn in code until it has a sprite: sitting, walking or curled up asleep.
+  // The cat, drawn in code until it has a sprite: a slate-grey shorthair with amber eyes, one white
+  // forepaw and a black tail tip. Sitting like a loaf, walking, curled up asleep, or batting at things.
   drawCat(e, sx, sy, t, light, iso) {
-    const c = this.ctx, body = rgb(this.col(iso.color || "#2e2b3a"), light, 1.7);
-    const lift = e.onDesk ? 17 : 0, y0 = sy - lift;
+    const c = this.ctx, body = rgb(this.col(iso.color || "#4a525c"), light, 1.5);
+    const paw = rgb(this.col(iso.paw || "#e8e2d6"), light, 1), tip = rgb(this.col(iso.tip || "#141218"), light, 1);
+    const lift = e.moving ? 0 : (e.lift ?? (e.onDesk ? 17 : 0)), y0 = sy - lift;
     c.save();
     c.fillStyle = "rgba(0,0,0,0.35)";
     c.beginPath(); c.ellipse(sx, y0, 8, 3.5, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = body;
     if (e.sleeping && !e.moving) {
-      // a curled loaf, breathing, tail around the front
+      // a curled loaf, breathing, tail around the front with its black tip
       const br = 1 + 0.04 * Math.sin(t * 2);
       c.beginPath(); c.ellipse(sx, y0 - 4, 7.5 * br, 4.5 * br, 0, 0, Math.PI * 2); c.fill();
       c.beginPath(); c.arc(sx - 5, y0 - 5, 3.2, 0, Math.PI * 2); c.fill();
       c.beginPath(); c.moveTo(sx - 7, y0 - 7.5); c.lineTo(sx - 6.5, y0 - 10.5); c.lineTo(sx - 4.5, y0 - 8); c.fill();
       c.strokeStyle = body; c.lineWidth = 2;
-      c.beginPath(); c.moveTo(sx + 6, y0 - 2); c.quadraticCurveTo(sx + 2, y0 + 1, sx - 4, y0 - 1); c.stroke();
+      c.beginPath(); c.moveTo(sx + 6, y0 - 2); c.quadraticCurveTo(sx + 2, y0 + 1, sx - 2, y0 - 0.5); c.stroke();
+      c.strokeStyle = tip;
+      c.beginPath(); c.moveTo(sx - 2, y0 - 0.5); c.lineTo(sx - 4, y0 - 1); c.stroke();
+      c.fillStyle = paw; // the white forepaw, tucked in
+      c.beginPath(); c.arc(sx - 2.5, y0 - 1.5, 1.3, 0, Math.PI * 2); c.fill();
     } else {
       const step = e.moving ? Math.sin(t * 18) * 1.2 : 0;
       const face = (e.x - e.rx) + (e.y - e.ry) >= 0 ? 1 : -1; // looks the way it walks
+      const pounce = (e.pounceUntil || 0) > performance.now();
+      const crouch = pounce ? 2 * Math.abs(Math.sin(t * 9)) : 0;
       // body and chest
-      c.beginPath(); c.ellipse(sx, y0 - 6 - Math.abs(step) * 0.3, 6, 4.5, 0, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.ellipse(sx, y0 - 6 - Math.abs(step) * 0.3 + crouch * 0.5, 6, 4.5, 0, 0, Math.PI * 2); c.fill();
       // head with ears
-      const hx = sx + 4 * face, hy = y0 - 12;
+      const hx = sx + 4 * face, hy = y0 - 12 + crouch;
       c.beginPath(); c.arc(hx, hy, 3.4, 0, Math.PI * 2); c.fill();
       c.beginPath(); c.moveTo(hx - 3, hy - 1.5); c.lineTo(hx - 2.4, hy - 6); c.lineTo(hx - 0.5, hy - 3); c.fill();
       c.beginPath(); c.moveTo(hx + 3, hy - 1.5); c.lineTo(hx + 2.4, hy - 6); c.lineTo(hx + 0.5, hy - 3); c.fill();
-      // tail, swaying
-      c.strokeStyle = body; c.lineWidth = 2;
-      const sway = Math.sin(t * 2.2 + e.rx) * 3;
-      c.beginPath(); c.moveTo(sx - 5 * face, y0 - 6); c.quadraticCurveTo(sx - 10 * face, y0 - 9, sx - 9 * face + sway, y0 - 16); c.stroke();
-      // legs while walking
+      // tail, swaying, dipped in the inkwell at the end
+      c.lineWidth = 2;
+      const sway = Math.sin(t * (e.batting ? 5 : 2.2) + e.rx) * 3;
+      const tx0 = sx - 5 * face, ty0 = y0 - 6, tcx = sx - 10 * face, tcy = y0 - 9, tx1 = sx - 9 * face + sway, ty1 = y0 - 16;
+      c.strokeStyle = body;
+      c.beginPath(); c.moveTo(tx0, ty0); c.quadraticCurveTo(tcx, tcy, tx1, ty1); c.stroke();
+      c.strokeStyle = tip;
+      c.beginPath(); c.moveTo(tx1, ty1); c.lineTo(tx1 + (tx1 - tcx) * 0.25, ty1 + (ty1 - tcy) * 0.25); c.stroke();
+      // legs: walking, batting with the white forepaw, or sitting with it in front
+      c.lineWidth = 1.6;
       if (e.moving) {
-        c.lineWidth = 1.6;
-        c.beginPath(); c.moveTo(sx - 3, y0 - 3); c.lineTo(sx - 3 + step, y0); c.moveTo(sx + 3, y0 - 3); c.lineTo(sx + 3 - step, y0); c.stroke();
+        c.strokeStyle = body;
+        c.beginPath(); c.moveTo(sx - 3, y0 - 3); c.lineTo(sx - 3 + step, y0); c.stroke();
+        c.strokeStyle = paw;
+        c.beginPath(); c.moveTo(sx + 3, y0 - 3); c.lineTo(sx + 3 - step, y0); c.stroke();
+      } else if (e.batting || pounce) {
+        const bat = Math.sin(t * 7) > 0.3 ? 1 : 0;
+        c.strokeStyle = paw;
+        c.beginPath(); c.moveTo(sx + 3 * face, y0 - 5); c.lineTo(sx + (5 + 3 * bat) * face, y0 - 2 - 5 * bat); c.stroke();
+      } else {
+        c.fillStyle = paw;
+        c.beginPath(); c.arc(sx + 2.5 * face, y0 - 1.2, 1.4, 0, Math.PI * 2); c.fill();
       }
       // amber eyes
       c.fillStyle = iso.eyes || "#e0a030";
       const blink = Math.sin(t * 0.7 + e.rx * 3) > 0.97;
       if (!blink) { c.fillRect(hx - 1.8, hy - 0.8, 1.2, 1.2); c.fillRect(hx + 0.8, hy - 0.8, 1.2, 1.2); }
     }
+    // purring: a faint warm shimmer
+    if ((e.purrUntil || 0) > performance.now()) this.glow(sx, y0 - 6, 12, [230, 170, 90], 0.12 + 0.06 * Math.sin(t * 30));
     c.restore();
   }
 

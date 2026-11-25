@@ -165,11 +165,11 @@ Tally remembers their own moves. Every choice of where to be, from a tick or fro
 
 Tally stays where they were between sessions. The game saves Tally's position, what they are doing and why, their pose and the rest of any planned round to `.vault-state/tally.json` (every few seconds when it changes, and when the tab closes). Next time the game opens, Tally is still there, lying on the couch or halfway to the map room. Walking with the owner ends when they leave. You always come in through the front door. Delete `tally.json` to have Tally start at the desk again.
 
-## Residents: the cat and the imp
+## Residents: Vellum the cat, and the imp
 
 Two residents are scripted in the browser, with no model calls, so they cost nothing ([web/js/denizens.js](web/js/denizens.js)). Both are drawn in code until they have sprites.
 
-- **The cat** wanders between warm and quiet places (braziers, the fireplace, the pool, the couch), naps there, and sits on the ledger when three or more things are waiting in it. It never settles in or next to a doorway, and it blocks nobody. Right-click it to look at it or pet it.
+- **Vellum, the cat** (designed by Tally) has a mood: sleepy about half the time, otherwise curious or playful, and hungry about three hours after a meal. Sleepy, it naps by the fireplace and braziers, on its cushion in the Hearth or in the hammock; curious, it watches the pool or whoever came in last, and sits on the map table when someone works there; playful, it bats at the loose pages and the quill on a string; hungry, it waits by its bowl next to the fireplace, then goes to Tally. It sits on the desk when four or more things wait in the ledger. It never settles in or by a doorway, by the bell or on the welcome mat, and it blocks nobody. Right-click it to look at it, pet it, feed it, play with it or call it ("pspsps"); all but calling need you next to it, and a guest may only pet and call. Tally can tend it too, with the same rules (the `tend_cat` tool, or a check-in). Where it is, its mood and when it last ate are kept in the state folder (`cat.json`), so it is where you left it.
 - **The imp** is the errand runner. When an errand starts, it hops off Tally's desk and runs out of the vault; when the errand is done, it comes back in with the report and pins it to the notice board.
 
 ## Tally arranges the vault

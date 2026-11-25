@@ -529,11 +529,68 @@ function applyIntent(ev) {
 // Where Tally is, what they are doing and why: for the talk's game_state line and for ticks.
 // Where the cat is, for Tally's <game_state>: it lives in the browser, so the map plan cannot show it.
 function catText() {
-  const c = state.denizens?.cat;
+  const d = state.denizens, c = d?.cat;
   if (!c) return "";
-  const r = roomAt(c.x, c.y);
-  const what = c.onDesk ? "sitting on the ledger on your desk" : c.sleeping ? "asleep" : c.path?.length ? "on the move" : "sitting";
-  return ` The vault cat is ${what} in ${r ? r.name : "the vault"}, at (${c.x},${c.y}).`;
+  const r = roomAt(c.x, c.y), where = d.whereWord();
+  const steps = Math.max(Math.abs(c.x - state.tally.x), Math.abs(c.y - state.tally.y));
+  return ` ${d.name}, the vault cat, is ${d.doingWord()}${where ? `, ${where}` : ""}, in ${r ? r.name : "the vault"} at (${c.x},${c.y}),` +
+    (steps <= 1 ? " right next to you (you can tend it with tend_cat)." : ` ${steps} steps from you.`) +
+    (d.hungry() ? " It has not been fed for over three hours." : "");
+}
+
+// ---------- tending the cat ----------
+// Pet, feed, play and call go to the server, which has the rules (the same for Tally); the
+// answer is a one-line emote and an effect the cat plays out. All but calling need you next to it.
+
+async function tendCat(action, walked = false) {
+  const d = state.denizens, c = d.cat, p = state.player;
+  if (action !== "call" && !d.next(p.x, p.y)) {
+    if (walked) return log(`${d.name} has moved off.`);
+    const path = findPath(d.around());
+    if (path === null) return log("You can't find a way over to the cat.");
+    if (state.talking) stopTalking();
+    state.path = path;
+    state.onArrive = () => tendCat(action, true);
+    if (!path.length) { state.onArrive = null; tendCat(action, true); }
+    return;
+  }
+  if (action === "call") log("You crouch down and call: pspsps.", "action");
+  if (action === "play") log("You trail the quill on its string across the floor.", "action");
+  let res;
+  try {
+    const r = await fetch(`/api/cat/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ at: [p.x, p.y], cat: d.snapshot() }),
+    });
+    res = await r.json();
+    if (!r.ok) return log(res.error || "The cat is not to be tended just now.", "err");
+  } catch (e) {
+    return log(`Lost the connection to the vault: ${e.message}`, "err");
+  }
+  log(res.text, "action");
+  d.apply(res, "player");
+  saveCat();
+}
+
+// Tally tended the cat, in a reply or a check-in: the server already decided what happened.
+function catFromTally(events) {
+  for (const ev of events || []) {
+    if (!ev?.text) continue;
+    log(ev.text.replace(/^You need/, "Tally needs"), "action");
+    state.denizens.apply(ev, "tally");
+  }
+  saveCat();
+}
+
+// Where the cat is and its mood, kept across sessions (OWNER's game only).
+let lastCat = "";
+function saveCat(beacon = false) {
+  if (!state.denizens || isGuest()) return;
+  const body = JSON.stringify(state.denizens.snapshot());
+  if (body === lastCat) return;
+  lastCat = body;
+  if (beacon && navigator.sendBeacon) navigator.sendBeacon("/api/cat", new Blob([body], { type: "application/json" }));
+  else fetch("/api/cat", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => { lastCat = ""; });
 }
 
 function doingText() {
@@ -601,6 +658,7 @@ async function tallyChooses() {
         here_minutes: (now - (t.arrivedAt || state.bootedAt || now)) / 60000,
         doing: doingText(), why: t.doing?.why || "",
         recent: state.lastSaid || "", recent_reply: state.lastReply || "",
+        cat: state.denizens?.snapshot(),
       }),
     });
     res = await r.json();
@@ -611,6 +669,7 @@ async function tallyChooses() {
   }
   if (!res || state.busy || state.talking) return;
   const mine = roomAt(state.player.x, state.player.y), theirs = roomAt(t.x, t.y);
+  if (res.cat) catFromTally([res.cat]);
   if (res.thinking) window.dispatchEvent(new CustomEvent("vault:errands"));
   if (res.thinking) log(`Tally goes quiet for a moment, turning something over: ${res.thinking}. A runner sets off with the question; you will hear what came of it.`, "action");
   if (res.say) {
@@ -808,6 +867,7 @@ async function say(text) {
     : `OWNER is ${state.player.pose ? poseText(state.player) : `standing in ${room ? room.name : "the vault"}`}, next to you. ` +
       `${youAre}, at (${state.tally.x},${state.tally.y}).` + promiseText() + catText();
   state.lastSaid = text;
+  saveCat(); saveTally(); // so Tally's tools (tend_cat) see where everyone is now
   try {
     await talk(text, fill(where), {
       delta: (t) => {
@@ -819,6 +879,7 @@ async function say(text) {
       action: onAction,
       error: (t) => log(t, "err"),
       intent: applyIntent,
+      cat: (ev) => catFromTally(ev.events),
       world: () => reloadWorld().catch((e) => log(`Could not reload the map: ${e.message}`, "err")),
     });
   } catch (e) {
@@ -866,8 +927,11 @@ function ctxOptions(x, y) {
   let head;
   const resident = state.denizens?.at(x, y);
   if (resident === "cat") {
-    return { head: "the vault cat", opts: [["Look at the cat", () => state.denizens.lookAtCat()],
-      ["Pet the cat", () => state.denizens.petCat()]] };
+    const n = state.denizens.name;
+    const catOpts = [[`Look at ${n}`, () => state.denizens.lookAtCat()], [`Pet ${n}`, () => tendCat("pet")]];
+    if (!isGuest()) catOpts.push([`Feed ${n}`, () => tendCat("feed")], [`Play with ${n} (the quill on a string)`, () => tendCat("play")]);
+    catOpts.push([`Call ${n} ("pspsps")`, () => tendCat("call")]);
+    return { head: n, opts: catOpts };
   }
   if (resident === "imp") return { head: "an imp", opts: [["Look at the imp", () => state.denizens.lookAtImp()]] };
   if (x === state.tally.x && y === state.tally.y) {
@@ -1074,8 +1138,12 @@ async function boot() {
   [state.tally.x, state.tally.y] = w.tally;
   labelShelves();
   // the cat and the errand imp: scripted here, no model calls
-  state.denizens = createDenizens(w, { tileAt, log });
-  setInterval(() => state.denizens.tick(!isGuest() && ledger.pendingCount() >= 3), 150);
+  state.denizens = createDenizens(w, { tileAt, log, roomAt,
+    people: () => ({ player: state.player, tally: state.tally }) });
+  state.denizens.restore(w.cat_saved);
+  w.catBowlFull = () => Date.now() - state.denizens.cat.fedAt < 20 * 60 * 1000; // food in the bowl a while after a meal
+  setInterval(() => state.denizens.tick(!isGuest() && ledger.pendingCount() >= 4), 150);
+  setInterval(() => saveCat(), 5000);
   window.addEventListener("vault:errand-out", (ev) => state.denizens.errandOut(ev.detail));
   window.addEventListener("vault:errand-back", (ev) => state.denizens.errandBack(ev.detail));
 
@@ -1143,7 +1211,7 @@ async function boot() {
   const back = restoreTally(w.tally_saved);
   state.restored = true;
   setInterval(saveTally, 5000);
-  window.addEventListener("pagehide", () => saveTally(true));
+  window.addEventListener("pagehide", () => { saveTally(true); saveCat(true); });
   document.addEventListener("visibilitychange", () => { if (document.hidden) saveTally(true); });
   setInterval(tallyTick, TALLY_STEP_MS);
   state.bootedAt = performance.now();
@@ -1153,7 +1221,7 @@ async function boot() {
     setInterval(tallyChooses, tickMin * 60000);
     setTimeout(tallyChooses, 60000); // a first choice of their own soon after you arrive
   }
-  window.vault = { state, renderers, portraits, tallyChooses, applyIntent, ringBell, reloadWorld }; // handy from the browser console
+  window.vault = { state, renderers, portraits, tallyChooses, applyIntent, ringBell, reloadWorld, tendCat }; // handy from the browser console
 
   const st = w.status;
   const statusEl = $("status");

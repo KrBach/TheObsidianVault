@@ -1,50 +1,59 @@
 // The vault's other residents, scripted in the browser: no model calls, so they cost nothing.
 //
-// The cat wanders between warm and quiet places (braziers, the fireplace, the pool, the desk),
-// naps there, and sits on the ledger when it is busiest. It never stops in or next to a doorway,
-// and it never blocks anyone: Tally and OWNER walk straight through it.
+// Vellum, the cat, as in-game Tally designed it. It always has a mood: sleepy about half the time,
+// otherwise curious or playful, and hungry from three hours after its last meal. The mood picks where
+// it goes. Sleepy: warm places (the fireplace, the braziers), its cushion, the hammock, the couch.
+// Curious: the pool's edge, whoever came into a room last, or the map table when someone works there.
+// Playful: the loose pages and the quill on a string. Hungry: its bowl, and after a while Tally.
+// When four or more items wait in the ledger it goes and sits on the desk. It never settles in or by
+// a doorway, by the bell or on the welcome mat, and it never blocks anyone: people walk through it.
+//
+// Tending it (pet, feed, play, call) goes through the server, which has the rules (cat.py), the same
+// for OWNER, a guest and Tally; this file plays out what the server says happened. main.js saves
+// where it is and its mood, so the next session finds it there.
 //
 // The imp is the errand runner. When an errand starts it leaves the desk and runs out of the
 // vault; when the errand is done it comes back in with the report and pins it to the notice board.
 
 const STEPS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-const WARM = new Set(["brazier", "fireplace", "fireplace_side", "pool", "desk", "desk_side", "candle", "couch"]);
+const STEPS8 = [...STEPS4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
+const WARM = new Set(["brazier", "fireplace", "fireplace_side"]);
+const SOFT = { cushion: 6, hammock: 4, couch: 2 }; // where it likes to sleep, and how much
+const LIFT = { desk: 17, map_table: 13, hammock: 10, couch: 6, cushion: 3 }; // how high it sits on each
 const CAT_STEP_MS = 520, IMP_STEP_MS = 190;
+const HUNGRY_MS = 3 * 3600 * 1000;
+const S = 1000;
 
 const CAT_LOOKS = [
-  "The cat looks back at you, slowly closes its eyes, and opens them again. You have been approved of.",
-  "The cat is not interested in you right now. It is interested in a speck of light on the floor.",
-  "The cat flicks one ear at you, which is as much as you are getting.",
-  "The cat stares at you without blinking. You blink first.",
-];
-const CAT_PETS = [
-  "You scratch the cat behind the ears. It leans into your hand and purrs like a small engine.",
-  "The cat allows exactly two strokes, then walks off as if nothing happened.",
-  "The cat rolls over to show its belly. It is a trap; you know it is a trap.",
-  "The cat butts its head against your hand and leaves black hair on your sleeve.",
+  "It looks back at you, slowly closes its eyes, and opens them again. You have been approved of.",
+  "It is not interested in you right now. It is interested in a speck of light on the floor.",
+  "It flicks one ear at you, which is as much as you are getting.",
+  "It stares at you without blinking. You blink first.",
 ];
 
 export function createDenizens(world, api) {
-  const { tileAt, log, now = () => performance.now() } = api;
-  const map = world.map;
-  const cell = (x, y) => tileAt(x, y);
-  const isDoor = (x, y) => cell(x, y)?.id === "door";
+  const { tileAt, log, now = () => performance.now(), clock = () => Date.now(),
+          people = () => ({}), roomAt = () => null } = api;
+  const def = world.creatures?.cat || {};
+  const NAME = def.call || "the cat";
+  const cell = tileAt;
+  const id = (x, y) => tileAt(x, y)?.id;
+  const open = (x, y) => { const t = tileAt(x, y); return !!(t && t.def && !t.def.solid); };
+  const by = (x, y, ids, steps = STEPS8) => steps.some(([dx, dy]) => ids.has(id(x + dx, y + dy)));
+  const isDoor = (x, y) => id(x, y) === "door";
   const nearDoor = (x, y) => isDoor(x, y) || STEPS4.some(([dx, dy]) => isDoor(x + dx, y + dy));
-  const open = (x, y) => { const t = cell(x, y); return !!(t && t.def && !t.def.solid); };
-  const fixedSpots = [world.spawn, world.exit, world.tally].filter(Boolean).map(([x, y]) => `${x},${y}`);
-
-  // Places the cat likes: open floor beside something warm or soft, away from doorways.
-  const liked = [];
-  for (let y = 0; y < map.length; y++) {
-    for (let x = 0; x < map[y].length; x++) {
-      if (!open(x, y) || nearDoor(x, y) || fixedSpots.includes(`${x},${y}`)) continue;
-      const here = cell(x, y)?.id;
-      const warmBy = STEPS4.some(([dx, dy]) => WARM.has(cell(x + dx, y + dy)?.id));
-      if (warmBy || cell(x, y)?.def?.use) liked.push([x, y, here]);
-    }
-  }
-  const deskCells = [];
-  for (let y = 0; y < map.length; y++) for (let x = 0; x < map[y].length; x++) if (cell(x, y)?.id === "desk") deskCells.push([x, y]);
+  const fixedSpots = () => [world.spawn, world.exit, world.tally].filter(Boolean).map(([x, y]) => `${x},${y}`);
+  const BELL = new Set(["bell"]);
+  // never settle here: a doorway, the bell, the welcome mat, the way in, Tally's place at the desk
+  const forbidden = (x, y) => nearDoor(x, y) || id(x, y) === "mat" || by(x, y, BELL) || fixedSpots().includes(`${x},${y}`);
+  const canSettle = (x, y) => open(x, y) && !forbidden(x, y);
+  const dist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
+  const cellsWhere = (pred) => {
+    const out = [], m = world.map; // read each time: Tally can rearrange the vault
+    for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) if (pred(x, y)) out.push([x, y]);
+    return out;
+  };
+  const around = (x, y, ok = canSettle) => STEPS8.map(([dx, dy]) => [x + dx, y + dy]).filter(([a, b]) => ok(a, b));
 
   function bfs(start, goals, passable) {
     const key = (x, y) => `${x},${y}`;
@@ -70,57 +79,236 @@ export function createDenizens(world, api) {
   }
 
   const pick = (list) => list[Math.floor(Math.random() * list.length)];
-  const start = liked.length ? pick(liked) : world.spawn;
-  const cat = { kind: "cat", x: start[0], y: start[1], rx: start[0], ry: start[1], path: [], restUntil: now() + 15000,
-                sleeping: false, onDesk: false, nextStep: 0 };
+  const weighted = (list) => {
+    const total = list.reduce((s, p) => s + p.w, 0);
+    let r = Math.random() * total;
+    for (const p of list) { r -= p.w; if (r <= 0) return p; }
+    return list[list.length - 1] || null;
+  };
+  const span = (a, b) => (a + Math.random() * (b - a)) * S;
+
+  const start0 = pick(cellsWhere((x, y) => canSettle(x, y) && by(x, y, WARM))) || world.spawn;
+  const cat = { kind: "cat", x: start0[0], y: start0[1], rx: start0[0], ry: start0[1], path: [], pace: CAT_STEP_MS,
+                nextStep: 0, restUntil: now() + 15 * S, mood: "sleepy", sleeping: false, batting: false,
+                perch: null, lift: 0, onDesk: false, goal: null, follow: null, come: null, hunger: null,
+                purrUntil: 0, pounceUntil: 0, fedAt: clock() };
   const imp = { kind: "imp", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, job: null, nextStep: 0, carrying: false };
   const out = [];  // errands the imp is out on
   const back = []; // reports waiting to be brought in
 
+  // Who came into a room last: the curious cat goes to have a look at them.
+  const lastRoom = {};
+  let lastArrived = "player";
+  function watchArrivals() {
+    const ppl = people();
+    for (const who of ["player", "tally"]) {
+      const p = ppl[who];
+      if (!p) continue;
+      const r = roomAt(p.x, p.y)?.id || "";
+      if (lastRoom[who] !== undefined && lastRoom[who] !== r) lastArrived = who;
+      lastRoom[who] = r;
+    }
+  }
+
   // ---------- the cat ----------
 
-  function catChoose(busy) {
-    if (busy && deskCells.length) {
-      // the ledger is busiest: go and sit on it
-      const desk = deskCells[Math.floor(deskCells.length / 2)];
-      const beside = STEPS4.map(([dx, dy]) => [desk[0] + dx, desk[1] + dy]).filter(([x, y]) => open(x, y));
-      const path = bfs([cat.x, cat.y], beside, open);
-      if (path) { cat.path = path; cat.goal = { desk }; return; }
+  const hungry = () => clock() - cat.fedAt >= HUNGRY_MS;
+
+  function pickMood() {
+    const r = Math.random();
+    return r < 0.5 ? "sleepy" : r < 0.78 ? "curious" : "playful";
+  }
+
+  // Where it might go in a mood: [{at, w, sleep?, bat?, perch?}]
+  function places(mood) {
+    const list = [], ppl = people();
+    const spread = (cells, w, extra) => { for (const at of cells) list.push({ at, w: w / cells.length, ...extra }); };
+    if (mood === "sleepy") {
+      spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, WARM)), 5, { sleep: true });
+      for (const [kind, w] of Object.entries(SOFT)) spread(cellsWhere((x, y) => id(x, y) === kind && canSettle(x, y)), w, { sleep: true });
+    } else if (mood === "curious") {
+      spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, new Set(["pool"]), STEPS4)), 3, {});
+      const who = ppl[lastArrived];
+      if (who) spread(around(who.x, who.y), 4, { watch: lastArrived });
+      // the map table, but only when someone is working at it
+      const tables = [];
+      for (const w of ["player", "tally"]) {
+        const p = ppl[w];
+        if (p) for (const at of around(p.x, p.y, (x, y) => id(x, y) === "map_table")) tables.push(at);
+      }
+      spread(tables, 5, { perch: true });
+    } else if (mood === "playful") {
+      spread(cellsWhere((x, y) => id(x, y) === "papers" && canSettle(x, y)), 3, { bat: true });
+      spread(cellsWhere((x, y) => id(x, y) === "quill_toy" && canSettle(x, y)), 3, { bat: true });
     }
-    const choices = liked.filter(([x, y]) => Math.abs(x - cat.x) + Math.abs(y - cat.y) > 3);
-    const target = choices.length ? pick(choices) : null;
-    if (!target) { cat.restUntil = now() + 30000; return; }
-    const path = bfs([cat.x, cat.y], [[target[0], target[1]]], open);
-    if (path) { cat.path = path; cat.goal = { at: target }; }
-    else cat.restUntil = now() + 20000;
+    return list.filter((p) => p.perch || p.at[0] !== cat.x || p.at[1] !== cat.y);
+  }
+
+  function go(target, t, pace = CAT_STEP_MS) {
+    const goals = target.perch ? around(target.at[0], target.at[1], open) : [target.at];
+    const path = bfs([cat.x, cat.y], goals, open);
+    if (!path) { cat.restUntil = t + 20 * S; return false; }
+    cat.path = path; cat.goal = target; cat.pace = pace;
+    if (!path.length) arrive(t);
+    return true;
+  }
+
+  function leavePerch() {
+    if (cat.perch) {
+      const off = around(cat.x, cat.y, open)[0];
+      if (off) [cat.x, cat.y] = off;
+    }
+    cat.perch = null; cat.onDesk = false; cat.lift = 0;
+  }
+
+  function choose(t, busy) {
+    if (busy && cat.mood !== "hungry") {
+      // the ledger is busiest: go and sit on it
+      const desks = cellsWhere((x, y) => id(x, y) === "desk");
+      if (desks.length) { go({ at: desks[Math.floor(desks.length / 2)], perch: true, desk: true }, t); return; }
+    }
+    if (cat.mood === "hungry") {
+      // the bowl first; after waiting a while there, Tally; then the bowl again
+      const ppl = people();
+      if (cat.hunger === "bowl" && ppl.tally) { cat.hunger = "tally"; go({ at: [ppl.tally.x, ppl.tally.y], perch: true, nearOnly: true, hungry: true }, t); return; }
+      const bowl = cellsWhere((x, y) => id(x, y) === "cat_bowl")[0];
+      cat.hunger = "bowl";
+      if (bowl) { go({ at: bowl, perch: true, nearOnly: true, hungry: true }, t); return; }
+    }
+    let opts = places(cat.mood);
+    if (!opts.length) opts = places("sleepy");
+    const target = weighted(opts);
+    if (!target) { cat.restUntil = t + 30 * S; return; }
+    go(target, t);
+  }
+
+  function arrive(t) {
+    const g = cat.goal || {};
+    cat.goal = null;
+    if (g.perch && !g.nearOnly) { // hop up onto the desk or the map table
+      [cat.x, cat.y] = g.at;
+      cat.perch = id(cat.x, cat.y);
+      cat.onDesk = !!g.desk;
+    } else if (forbidden(cat.x, cat.y) && !cat.follow) {
+      // never settle in or by a doorway, the bell or the mat: walk on to the nearest good place
+      const next = bfs([cat.x, cat.y], cellsWhere(canSettle), open);
+      if (next?.length) { cat.path = next; cat.goal = { settleOnly: true }; return; }
+    }
+    cat.lift = LIFT[id(cat.x, cat.y)] || 0;
+    cat.sleeping = !!g.sleep && cat.mood === "sleepy" && Math.random() < 0.85;
+    cat.batting = !!g.bat;
+    cat.restUntil = t + (g.desk ? 60 * S : g.hungry ? 120 * S : cat.sleeping ? span(90, 210)
+      : cat.batting ? span(15, 35) : span(25, 60));
   }
 
   function catStep(t, busy) {
+    watchArrivals();
+    const ppl = people();
+    if (hungry() && cat.mood !== "hungry" && !cat.follow) {
+      cat.mood = "hungry"; cat.hunger = null;
+      if (!cat.sleeping && !cat.path.length) cat.restUntil = Math.min(cat.restUntil, t + 5 * S);
+    } else if (!hungry() && cat.mood === "hungry") {
+      cat.mood = "playful"; cat.hunger = null;
+    }
+    if (cat.come && t >= cat.come.at) {
+      // it heard you, and is pretending it didn't: up, then over, slowly
+      const who = ppl[cat.come.who];
+      cat.come = null;
+      if (who) { leavePerch(); cat.sleeping = false; cat.batting = false; cat.mood = "curious";
+        go({ at: [who.x, who.y], perch: true, nearOnly: true }, t, CAT_STEP_MS * 1.7); }
+      return;
+    }
     if (cat.path.length) {
       if (t < cat.nextStep) return;
-      cat.nextStep = t + CAT_STEP_MS * (0.8 + Math.random() * 0.5);
-      const [nx, ny] = cat.path.shift();
-      cat.x = nx; cat.y = ny;
-      if (!cat.path.length) {
-        if (cat.goal?.desk) { [cat.x, cat.y] = cat.goal.desk; cat.onDesk = true; }
-        // never settle in or by a doorway: walk on to the nearest liked place instead
-        if (!cat.onDesk && nearDoor(cat.x, cat.y)) { catChoose(false); return; }
-        const warm = STEPS4.some(([dx, dy]) => WARM.has(cell(cat.x + dx, cat.y + dy)?.id));
-        cat.sleeping = warm && Math.random() < 0.6;
-        cat.restUntil = t + (cat.sleeping ? 90000 + Math.random() * 120000 : 25000 + Math.random() * 50000);
-        if (cat.onDesk) cat.restUntil = t + 60000;
+      cat.nextStep = t + cat.pace * (0.8 + Math.random() * 0.5);
+      [cat.x, cat.y] = cat.path.shift();
+      cat.lift = 0;
+      if (!cat.path.length) arrive(t);
+      return;
+    }
+    if (cat.follow) {
+      const who = ppl[cat.follow.who];
+      if (clock() > cat.follow.until || !who) { cat.follow = null; cat.restUntil = t + span(20, 40); return; }
+      if (dist([cat.x, cat.y], [who.x, who.y]) > 1) {
+        const path = bfs([cat.x, cat.y], around(who.x, who.y, open), open);
+        if (path?.length) { cat.path = path.slice(0, 3); cat.pace = CAT_STEP_MS * 0.7; cat.goal = { followStep: true }; }
       }
       return;
     }
     if (t < cat.restUntil) return;
-    if (cat.onDesk) {
-      if (busy) { cat.restUntil = t + 30000; return; } // still busy: stay on the ledger
-      const off = STEPS4.map(([dx, dy]) => [cat.x + dx, cat.y + dy]).find(([x, y]) => open(x, y));
-      if (off) [cat.x, cat.y] = off;
-      cat.onDesk = false;
+    if (cat.perch === "desk" && busy) { cat.restUntil = t + 30 * S; return; } // still busy: stay on the ledger
+    const woke = cat.sleeping;
+    leavePerch();
+    cat.sleeping = false; cat.batting = false;
+    if (cat.mood !== "hungry") cat.mood = woke && Math.random() < 0.5 ? "playful" : pickMood();
+    choose(t, busy);
+  }
+
+  // What the server said happened when someone tended the cat (cat.py), played out here.
+  function apply(res, who) {
+    if (!res?.ok) return;
+    const t = now();
+    if (res.cat?.fed_at) cat.fedAt = res.cat.fed_at * 1000;
+    switch (res.effect) {
+      case "purr": cat.purrUntil = t + 6 * S; cat.restUntil = Math.max(cat.restUntil, t + 20 * S); break;
+      case "blink": cat.purrUntil = 0; break;
+      case "walk_off": {
+        cat.sleeping = false; cat.batting = false; leavePerch(); cat.mood = "curious";
+        const far = places("sleepy").concat(places("curious")).filter((p) => !p.perch && dist(p.at, [cat.x, cat.y]) > 4);
+        const target = weighted(far);
+        if (target) go({ ...target, sleep: false }, t);
+        break;
+      }
+      case "fed":
+        cat.fedAt = res.cat?.fed_at ? res.cat.fed_at * 1000 : clock();
+        cat.mood = "playful"; cat.hunger = null; cat.sleeping = false; cat.batting = false; cat.path = [];
+        leavePerch();
+        cat.follow = { who, until: clock() + (res.follow_seconds || 60) * S };
+        break;
+      case "pounce": cat.pounceUntil = t + 2500; cat.batting = true; cat.restUntil = Math.max(cat.restUntil, t + 20 * S); break;
+      case "come": cat.come = { who, at: t + span(1.5, 3.5) }; break;
+      default: break;
     }
-    cat.sleeping = false;
-    catChoose(busy);
+  }
+
+  // Where it is, in words, for Tally's game_state and the look text.
+  function whereWord() {
+    if (cat.perch === "desk") return "on the desk, sitting squarely on the open ledger";
+    if (cat.perch === "map_table") return "on the map table";
+    const here = id(cat.x, cat.y);
+    if (here === "cushion") return "on its cushion";
+    if (here === "hammock") return "in the hammock";
+    if (here === "couch") return "on the couch";
+    if (here === "papers") return "among the loose pages";
+    if (here === "quill_toy") return "by the quill on a string";
+    if (by(cat.x, cat.y, new Set(["cat_bowl"]))) return "by its bowl";
+    if (by(cat.x, cat.y, new Set(["fireplace", "fireplace_side"]))) return "by the fireplace";
+    if (by(cat.x, cat.y, new Set(["brazier"]))) return "by a brazier";
+    if (by(cat.x, cat.y, new Set(["pool"]), STEPS4)) return "at the pool's edge, watching the water";
+    return "";
+  }
+
+  function doingWord() {
+    if (cat.path.length || cat.come) return cat.follow ? "following someone about" : "on its way somewhere, with purpose";
+    if (cat.sleeping) return "asleep, curled up nose to tail";
+    if (cat.batting) return "batting at things with one paw";
+    if (cat.mood === "hungry") return cat.hunger === "tally" ? "hungry, and staring at Tally about it" : "hungry, and waiting by its bowl";
+    return { sleepy: "drowsy", curious: "sitting and watching, curious", playful: "playful, tail twitching" }[cat.mood] || "sitting";
+  }
+
+  function snapshot() {
+    return { x: cat.x, y: cat.y, mood: cat.mood, asleep: cat.sleeping, on: whereWord() };
+  }
+
+  function restore(saved) {
+    if (saved?.fed_at) cat.fedAt = saved.fed_at * 1000;
+    if (!saved || saved.x == null || !canSettle(saved.x, saved.y)) return false;
+    cat.x = cat.rx = saved.x; cat.y = cat.ry = saved.y;
+    cat.mood = saved.mood || "sleepy";
+    cat.sleeping = !!saved.asleep && cat.mood === "sleepy";
+    cat.lift = LIFT[id(cat.x, cat.y)] || 0;
+    cat.restUntil = now() + span(20, 60);
+    return true;
   }
 
   // ---------- the imp ----------
@@ -131,8 +319,8 @@ export function createDenizens(world, api) {
     return STEPS4.map(([dx, dy]) => [ex + dx, ey + dy]).find(([x, y]) => open(x, y)) || world.spawn;
   };
   const boardSide = () => {
-    for (let y = 0; y < map.length; y++) {
-      for (let x = 0; x < map[y].length; x++) {
+    for (let y = 0; y < world.map.length; y++) {
+      for (let x = 0; x < world.map[y].length; x++) {
         if (cell(x, y)?.id !== "notice_board") continue;
         const s = STEPS4.map(([dx, dy]) => [x + dx, y + dy]).find(([a, b]) => open(a, b));
         if (s) return s;
@@ -191,6 +379,7 @@ export function createDenizens(world, api) {
   return {
     cat,
     imp,
+    name: NAME,
     entities() { return imp.hidden ? [cat] : [cat, imp]; },
     tick(busy) { const t = now(); catStep(t, busy); impStep(t); },
     errandOut(e) { out.push(e); },
@@ -200,11 +389,18 @@ export function createDenizens(world, api) {
       if (!imp.hidden && imp.x === x && imp.y === y) return "imp";
       return "";
     },
+    apply,
+    snapshot,
+    restore,
+    whereWord,
+    doingWord,
+    hungry,
+    next: (x, y) => dist([cat.x, cat.y], [x, y]) <= 1,
+    around: () => around(cat.x, cat.y, open),
     lookAtCat() {
-      const doing = cat.onDesk ? "It is sitting squarely on the open ledger." : cat.sleeping ? "It is asleep, curled up nose to tail." : cat.path.length ? "It is on its way somewhere, with purpose." : "It is sitting and watching nothing in particular.";
-      log(`The vault cat: black as the walls, with amber eyes. It has no job and no name yet. ${doing} ${pick(CAT_LOOKS)}`);
+      const where = whereWord();
+      log(`${def.desc || NAME} It is ${doingWord()}${where ? `, ${where}` : ""}. ${pick(CAT_LOOKS)}`);
     },
-    petCat() { log(pick(CAT_PETS)); cat.sleeping = false; },
     lookAtImp() {
       log(imp.carrying ? "A small soot-coloured imp with a rolled-up report under one arm. It is in a hurry." : "A small soot-coloured imp, the vault's errand runner. It is in a hurry.");
     },

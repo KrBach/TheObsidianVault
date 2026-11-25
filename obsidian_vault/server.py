@@ -18,6 +18,7 @@ from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
+from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .tick import Ticker
 from .world import World, WorldError
 
@@ -35,6 +36,7 @@ class Game:
         self.moves = MoveLog(cfg.state_dir, cfg.timezone, cfg.fill)
         self.ticker = Ticker(cfg, self.brain, self.errands)
         self.layout = World(cfg.state_dir)
+        self.cat = Cat(cfg.state_dir)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
 
@@ -51,6 +53,7 @@ class Game:
                 cr["player"]["portrait"] = {**cr["player"].get("portrait", {}), "image": self.cfg.owner_portrait}
         if "tally" in cr:
             cr["tally"] = {**cr["tally"], "name": self.cfg.companion, "desc": self.cfg.fill(cr["tally"].get("desc", ""))}
+        world["cat_saved"] = self.cat.get()  # where the cat was, its mood, and how long since it ate
         world["tally_saved"] = self.layout.tally()  # where Tally was when the game last closed
         world["status"] = {
             "brain": self.brain.name,
@@ -264,6 +267,22 @@ def make_handler(game: Game):
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
                 return self._json({"ok": True})
 
+            if self.path == "/api/cat":  # the browser says where the cat is (OWNER's game only)
+                if guest:
+                    return self._json({"ok": True, "skipped": "guest"})
+                try:
+                    return self._json({"ok": True, "cat": game.cat.save(payload)})
+                except CatError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+
+            if self.path.startswith("/api/cat/") and self.path.split("/")[-1] in CAT_ACTIONS:
+                try:
+                    res = game.cat.tend("guest" if guest else "owner", self.path.split("/")[-1],
+                                        payload.get("at"), payload.get("cat"))
+                except CatError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+                return self._json({**res, "cat": game.cat.get()})
+
             if self.path == "/api/tick":
                 if game.cfg.tick_minutes <= 0 or guest:
                     return self._json({"go": "stay", "at": None, "say": "", "skipped": "off"})
@@ -331,6 +350,9 @@ def make_handler(game: Game):
                                            intent.get("why", ""), room=intent.get("room", ""),
                                            how=intent.get("how", ""), item=intent.get("item", ""))
                             self.wfile.write(f"data: {json.dumps({'type': 'intent', **intent})}\n\n".encode())
+                        cat = game.cat.take_pending()  # Tally tended the cat
+                        if cat:
+                            self.wfile.write(f"data: {json.dumps({'type': 'cat', 'events': cat})}\n\n".encode())
                         if game.layout.version() != layout_before:
                             self.wfile.write(f"data: {json.dumps({'type': 'world'})}\n\n".encode())
                     self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())

@@ -2,8 +2,8 @@
  "name": "The Obsidian Vault",
  "map": [
   "#####################################################################",
-  "#,..,....,....,...#~~~...fFf...,...#.....,.....,..#..,i.....i...,.i.#",
-  "#.SSSSS....SSSSS..#~~~...,.........#..o---o....Y..#..w..w..w..w..w..#",
+  "#,..,....,....,...#~~~..ufFfv..,...#.....,.....,..#..,i.....i...,.i.#",
+  "#.SSSSS....SSSSS..#~~~...,....q....#..o---o....Y..#..w..w..w..w..w..#",
   "#........i........#...h...T........#..|....\\......+.....h...........#",
   "#.SSSSS....SSSSS..#.c....ede.....,.#..o.....o--o..#..w..w..w..w..w..#",
   "#.......Hi........+................+...\\...|...|..#i.....i.....i..i.#",
@@ -49,7 +49,8 @@
   "R": "table",
   "z": "bed",
   "W": "treadmill",
-  "u": "cushion", "N": "notice_board", "F": "fireplace", "f": "fireplace_side"
+  "u": "cushion", "N": "notice_board", "F": "fireplace", "f": "fireplace_side",
+  "v": "cat_bowl", "q": "quill_toy"
  },
  "spawn": [
   26,
@@ -84,7 +85,7 @@
     17,
     9
    ],
-   "desc": "Tally's desk faces the way in, with the ledger open, and a stone fireplace burns in the north wall behind it. A brazier on either side of the entrance, and a still pool in the far corner that reflects nothing quite right."
+   "desc": "Tally's desk faces the way in, with the ledger open, and a stone fireplace burns in the north wall behind it, with the cat's bowl on one side and its cushion on the other. A brazier on either side of the entrance, and a still pool in the far corner that reflects nothing quite right."
   },
   {
    "id": "graph",

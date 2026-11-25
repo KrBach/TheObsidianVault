@@ -550,6 +550,33 @@
         "h": 3
       }
     },
+    "cat_bowl": {
+      "glyph": "u",
+      "fg": "#c0b8a8",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "cat bowl",
+      "desc": "A shallow clay bowl by the fireplace, for the cat. It is empty more often than the cat thinks it should be.",
+      "iso": {
+        "shape": "bowl",
+        "f": 0.3,
+        "color": "#8a5a3a",
+        "floor": "#1d1628"
+      }
+    },
+    "quill_toy": {
+      "glyph": "~",
+      "fg": "#d8d0c0",
+      "bg": "#0a0710",
+      "solid": false,
+      "name": "quill on a string",
+      "desc": "An old quill tied to a length of string, for playing with the cat. Right-click the cat to use it.",
+      "iso": {
+        "shape": "quilltoy",
+        "color": "#d8d0c0",
+        "floor": "#1d1628"
+      }
+    },
     "table": {
       "glyph": "╥",
       "fg": "#a07a4a",
@@ -569,13 +596,16 @@
   "creatures": {
     "cat": {
       "glyph": "c",
-      "fg": "#9a9aa8",
-      "name": "the vault cat",
-      "desc": "A black cat with amber eyes. No job, no name yet.",
+      "fg": "#9aa4b0",
+      "name": "Vellum",
+      "call": "Vellum",
+      "desc": "Vellum, the vault cat: a small slate-grey shorthair with amber eyes, one white forepaw and a black tail tip, as if dipped in the inkwell. Named after the skin books were written on, which suits a cat that sleeps on pages.",
       "iso": {
         "shape": "cat",
-        "color": "#2e2b3a",
-        "eyes": "#e0a030"
+        "color": "#4a525c",
+        "eyes": "#e0a030",
+        "paw": "#e8e2d6",
+        "tip": "#141218"
       }
     },
     "imp": {
