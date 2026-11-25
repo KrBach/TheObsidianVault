@@ -11,6 +11,9 @@ Walls, doors, shelves and Tally's desk cannot be moved from here.
 Tally also tells the game where they mean to be (go somewhere, stay put, follow Kristian, or
 wander freely). That intent is written to <state_dir>/intent.json by the vault tools and
 picked up by the game when Tally's reply ends.
+
+Where Tally is right now (their cell, what they are doing and why, their pose, a plan) is saved
+by the game to <state_dir>/tally.json, so the next time the game opens Tally is where they were.
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ class World:
         self.state = Path(state_dir)
         self.file = self.state / "world.json"
         self.intent_file = self.state / "intent.json"
+        self.tally_file = self.state / "tally.json"
 
     # ---------- loading ----------
 
@@ -281,3 +285,42 @@ class World:
             except OSError:
                 pass
         return data
+
+    # ---------- where Tally is, kept across sessions ----------
+
+    def save_tally(self, rec: dict) -> dict:
+        """Keep where Tally is, sent by the game. Only known fields, cleaned, are kept."""
+        def txt(v, n):
+            return " ".join(str(v or "").split())[:n]
+
+        def cell(v):
+            if isinstance(v, (list, tuple)) and len(v) == 2 and all(isinstance(c, (int, float)) for c in v):
+                return [int(v[0]), int(v[1])]
+            return None
+
+        at = cell([rec.get("x"), rec.get("y")])
+        if not at:
+            raise WorldError("Tally's position needs x and y")
+        world = self.load()
+        if not (0 <= at[1] < len(world["map"]) and 0 <= at[0] < len(world["map"][at[1]])):
+            raise WorldError("that is outside the vault")
+        d = rec.get("doing") or {}
+        kind = d.get("kind") if d.get("kind") in ("round", "go", "stay", "follow") else "round"
+        out = {"x": at[0], "y": at[1], "saved": time.time(),
+               "doing": {"kind": kind, "why": txt(d.get("why"), 200), "name": txt(d.get("name"), 120),
+                         "firm_until": float(d.get("firm_until") or 0)}}
+        if rec.get("pose") in POSES:
+            out["pose"] = rec["pose"]
+        g = rec.get("goal") or {}
+        if cell(g.get("at")):
+            out["goal"] = {"at": cell(g["at"]), "name": txt(g.get("name"), 120), "room": txt(g.get("room"), 40)}
+        plan = [p for p in (rec.get("plan") or [])[:3] if isinstance(p, dict) and cell(p.get("at"))]
+        if plan:
+            out["plan"] = [{"at": cell(p["at"]), "name": txt(p.get("name"), 120), "room": txt(p.get("room"), 40),
+                            "why": txt(p.get("why"), 200)} for p in plan]
+        _write_json(self.tally_file, out)
+        return out
+
+    def tally(self) -> dict | None:
+        """Where Tally was when the game last saved, or None the first time."""
+        return _read_json(self.tally_file, None)

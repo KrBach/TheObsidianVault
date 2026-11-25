@@ -15,7 +15,7 @@ from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, load_persona, vault_shelves
 from .tick import Ticker
-from .world import World
+from .world import World, WorldError
 
 WEB_DIR = REPO_ROOT / "web"
 
@@ -35,6 +35,7 @@ class Game:
     def world(self) -> dict:
         world = self.layout.load()  # the repo's map plus Tally's own changes
         world["shelves"] = vault_shelves(self.cfg)
+        world["tally_saved"] = self.layout.tally()  # where Tally was when the game last closed
         world["status"] = {
             "brain": self.brain.name,
             "core_loaded": self.persona.loaded,
@@ -115,6 +116,13 @@ def make_handler(game: Game):
 
             if self.path == "/api/reset":
                 game.brain.reset()
+                return self._json({"ok": True})
+
+            if self.path == "/api/tally":
+                try:
+                    game.layout.save_tally(payload)
+                except (WorldError, TypeError, ValueError) as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
                 return self._json({"ok": True})
 
             if self.path == "/api/tick":
