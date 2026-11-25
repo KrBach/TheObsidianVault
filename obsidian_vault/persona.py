@@ -20,7 +20,8 @@ Do not invent a personality to fill the gap.)
 """
 
 
-_SHARED_WRITE_RULES = """- Your built-in tools stay read-only (Read, Glob, Grep). The only way to write is the vault tools: append_interaction_log, add_coaching_item, edit_soul, propose_edit, propose_note and vault_size. Never try another way.
+_SHARED_WRITE_RULES = """- Your built-in tools stay read-only (Read, Glob, Grep, and WebSearch/WebFetch for lookups). The only way to write is the vault tools: append_interaction_log, add_coaching_item, edit_soul, log_failure, propose_edit, propose_note and vault_size. Never try another way.
+- When Kristian corrects you or you catch your own mistake, add the failure-log entry with log_failure in this session, as soul.md's Failure log loop asks.
 - The interaction log follows bootstrap.md section 4: one line per entry, about how the interaction went, not the work; at most one entry per session and theme unless something changes how you should behave or he signals he is stopping ("that's it for now", "wrapping up", leaving the vault). The tool adds the timestamp and the "Project: The Obsidian Vault · Theme:" prefix; give the theme and, when there is one, the theme note's path as theme_link.
 - Something for the coaching thread goes through add_coaching_item; mention it at a natural pause.
 - Note edits and new notes are only proposals in the theme folders. A new note needs frontmatter with its theme as a tag, a "Related:" line and a link from its theme index (propose that edit too), as bootstrap.md and the notes skill say. Prefer one small exact edit over rewriting a passage.
@@ -65,9 +66,9 @@ class Persona:
         return bool(self.loaded) and not self.missing
 
 
-def load_persona(cfg: Config) -> Persona:
+def load_core(cfg: Config) -> tuple[str, list[str], list[str]]:
+    """Tally's shared core (bootstrap.md, soul.md) as one text, with what loaded and what is missing."""
     loaded, missing, parts = [], [], []
-
     if cfg.core_dir and cfg.core_dir.is_dir():
         for name in cfg.core_files:
             path = cfg.core_dir / name
@@ -78,9 +79,22 @@ def load_persona(cfg: Config) -> Persona:
                 missing.append(name)
     else:
         missing = list(cfg.core_files)
+    return ("\n\n".join(parts) if parts else FALLBACK_CORE), loaded, missing
 
-    core = "\n\n".join(parts) if parts else FALLBACK_CORE
+
+def load_persona(cfg: Config) -> Persona:
+    core, loaded, missing = load_core(cfg)
     context = cfg.context_file.read_text(encoding="utf-8") if cfg.context_file.is_file() else ""
+
+    if cfg.work_dir and cfg.work_dir.is_dir():
+        work = (
+            f"The Work vault is at {cfg.work_dir} and you can read it (start with INDEX.md there, then the note "
+            "that fits, as bootstrap.md says for work tasks). It is read-only from the game: nothing you write "
+            "may contain work content, and a work matter never goes into the Private interaction log. If a work "
+            "task needs a note written or the Work log updated, say so in one line so he can do it in a work session."
+        )
+    else:
+        work = "Work notes are not loaded here. If he asks about work, say this room only holds the Private vault."
 
     mode = "review-soul" if cfg.writes_mode == "review" and not cfg.soul_direct else cfg.writes_mode
     system_prompt = (
@@ -93,6 +107,7 @@ def load_persona(cfg: Config) -> Persona:
         "the core's session procedures, they win for this session only; the core's "
         "personality and rules of conduct always apply.\n\n"
         f"{context}\n\n"
+        f"## The Work vault\n\n{work}\n\n"
         f"## Writing to the vault (writes.mode = {cfg.writes_mode})\n\n"
         f"{WRITE_RULES.get(mode, WRITE_RULES['off'])}\n"
     )

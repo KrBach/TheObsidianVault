@@ -1,0 +1,265 @@
+"""Errands: bigger jobs Tally queues in the ledger, run by a separate Claude Code session once approved.
+
+The talk session stays small and read-only. When something needs more (a data check, a change to
+the game, research that takes a while), Tally writes a brief with propose_errand. Kristian approves
+it at the desk, and only then does the game start `claude -p` for it, with the tools that kind of
+errand needs and nothing else. The result comes back as a report Tally hears about on the next turn
+and that the notice board shows.
+
+Kinds:
+  research  read the vaults and the web, write nothing; the report is the result
+  code      change the game in its own git worktree and branch (never the copy that is running),
+            run the tests, commit, and push that one branch; never main, never a merge
+  session   a full session with Kristian's own Claude Code setup (skills, connectors, browser), in
+            the vault folder, for things like the Arknights data check; tools that spend art
+            credits are blocked unless the brief carries a spending limit he approved
+
+Records live in <state_dir>/errands/<id>.json; the full output in <id>.log.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import threading
+import time
+from pathlib import Path
+
+from .config import Config
+from .persona import load_core
+
+KINDS = ("research", "code", "session")
+
+# Tools that spend Kristian's art credits, under the names connectors get in Claude Code.
+_SPRITEFORGE = ["generate"]
+_RECRAFT = ["generate_image", "image_to_image", "image_edit", "inpaint_image", "variate_image",
+            "creative_upscale", "crisp_upscale", "generate_background", "replace_background",
+            "remove_background", "vectorize_image", "image_to_video", "erase_region", "call_agent"]
+COST_TOOLS = [f"{prefix}{tool}"
+              for prefixes, tools in (
+                  (("mcp__Spriteforge__", "mcp__spriteforge__", "mcp__claude_ai_Spriteforge__", "mcp__claude_ai_SpriteForge__"), _SPRITEFORGE),
+                  (("mcp__recraft__", "mcp__Recraft__", "mcp__claude_ai_Recraft__", "mcp__claude_ai_recraft__"), _RECRAFT))
+              for prefix in prefixes for tool in tools]
+
+ERRAND_RULES = """# Errand
+
+You are Tally, on an errand Kristian approved in The Obsidian Vault game. The brief below is the
+whole task: do it, and nothing beyond it. You run unattended, so nobody can answer a question. Where
+the brief is unclear, take the most likely reading and say which one you took in the report. If the
+errand cannot be done safely or needs his decision, stop and say so in the report instead of guessing.
+
+The session-start steps in bootstrap.md were done for you: skip them. Do not write to soul.md; the
+Tally in the game logs what matters when it hears your report. Your core rules still hold: check your
+work against the files before you call it done, say what you could not verify, and flag any workaround
+at once in the report.
+
+End with a short report in plain Markdown (no tables): what you did, what you checked and how, what is
+left, and anything that needs his decision. Put any link or branch name he needs in it.
+"""
+
+KIND_RULES = {
+    "research": "Kind: research. You can read the Private vault (your working folder), the Work vault if it was "
+                "added, and the web. You cannot write anything: the report is the result.",
+    "code": "Kind: code. You are in your own git worktree of The Obsidian Vault on the branch {branch}; the copy "
+            "of the game that is running is elsewhere and must not be touched. Make the change, follow the "
+            "README's conventions, run `python3 -m unittest discover -s tests`, and commit with a clear "
+            "message. Then push this branch only, with `git push -u origin {branch}`. Never push to main or "
+            "merge anything. If the push fails, say so; the commits stay on the branch.",
+    "session": "Kind: session. You have Kristian's own Claude Code setup in the Private vault folder: his skills, "
+               "his connectors and the browser, and you may edit notes as a normal session would, following "
+               "bootstrap.md and the notes skill (load the skill named in the brief first, if there is one). "
+               "{spend}",
+}
+
+
+def _now() -> float:
+    return time.time()
+
+
+class ErrandError(Exception):
+    pass
+
+
+class Errands:
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.dir = cfg.state_dir / "errands"
+        self.lock = threading.Lock()
+
+    # ---------- records ----------
+
+    def _path(self, eid: str) -> Path:
+        return self.dir / f"{''.join(c for c in eid if c.isalnum())}.json"
+
+    def get(self, eid: str) -> dict | None:
+        try:
+            return json.loads(self._path(eid).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _save(self, rec: dict) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        tmp = self._path(rec["id"]).with_suffix(".tmp")
+        tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(self._path(rec["id"]))
+
+    def all(self) -> list[dict]:
+        if not self.dir.is_dir():
+            return []
+        recs = []
+        for f in self.dir.glob("*.json"):
+            try:
+                recs.append(json.loads(f.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
+        return sorted(recs, key=lambda r: r.get("approved", 0), reverse=True)
+
+    def running(self) -> list[dict]:
+        return [r for r in self.all() if r.get("status") == "running"]
+
+    def unreported(self) -> list[dict]:
+        """Finished errands the talk session has not been told about yet. Marks them told."""
+        with self.lock:
+            out = []
+            for r in self.all():
+                if r.get("status") in ("done", "failed") and not r.get("reported"):
+                    r["reported"] = _now()
+                    self._save(r)
+                    out.append(r)
+            return out
+
+    # ---------- starting ----------
+
+    def start(self, op: dict) -> str:
+        """Start an approved errand (an op from the ledger). Returns a line for Kristian."""
+        if not self.cfg.errands:
+            raise ErrandError("errands are switched off ([errands] enabled = false in config.toml)")
+        if not self.cfg.claude_path:
+            raise ErrandError("Claude Code was not found, so errands cannot run")
+        if len(self.running()) >= self.cfg.errand_max_running:
+            raise ErrandError(f"{self.cfg.errand_max_running} errands are already running; approve this one when one finishes")
+        kind = op.get("errand_kind")
+        if kind not in KINDS:
+            raise ErrandError(f"unknown errand kind {kind!r}")
+        rec = {"id": op["id"], "kind": kind, "title": op.get("title", ""), "brief": op.get("brief", ""),
+               "spend_usd": float(op.get("spend_usd") or 0), "status": "running", "approved": _now(),
+               "log": str(self.dir / f"{op['id']}.log")}
+        cwd = self._workdir(rec)
+        cmd = self.command(rec)
+        self._save(rec)
+        threading.Thread(target=self._run, args=(rec, cmd, cwd), daemon=True).start()
+        where = f" on branch {rec['branch']}" if rec.get("branch") else ""
+        return f"Errand started{where}: {rec['title']}. Tally will hear the report when it is done."
+
+    def _workdir(self, rec: dict) -> str:
+        if rec["kind"] == "code":
+            repo = self.cfg.errand_repo
+            branch = f"errand/{rec['id']}"
+            path = self.cfg.errand_worktrees / rec["id"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            proc = subprocess.run(["git", "-C", str(repo), "worktree", "add", "-b", branch, str(path), "HEAD"],
+                                  capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise ErrandError(f"could not make a worktree for the errand: {(proc.stderr or proc.stdout).strip()[-300:]}")
+            rec["branch"], rec["worktree"] = branch, str(path)
+            rec["base"] = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"],
+                                         capture_output=True, text=True).stdout.strip()
+            return str(path)
+        if not self.cfg.core_dir or not self.cfg.core_dir.is_dir():
+            raise ErrandError("the vault folder is not set, so this errand has nowhere to run")
+        return str(self.cfg.core_dir)
+
+    def system_prompt(self, rec: dict) -> str:
+        core, _, _ = load_core(self.cfg)
+        if rec["spend_usd"] > 0:
+            spend = (f"Kristian approved spending up to ${rec['spend_usd']:.2f} of his art credits on this errand. "
+                     "Quote before each generation and stop before the total would pass that.")
+        else:
+            spend = ("Tools that spend his art credits are blocked. If the errand needs one, get a quote, "
+                     "put it in the report and stop, so he can approve the spend as a new errand.")
+        rules = KIND_RULES[rec["kind"]].format(branch=rec.get("branch", ""), spend=spend)
+        return (f"# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n{core}\n\n"
+                f"{ERRAND_RULES}\n{rules}\n")
+
+    def command(self, rec: dict) -> list[str]:
+        cfg = self.cfg
+        cmd = [cfg.claude_path or "claude", "-p", "--output-format", "json",
+               "--append-system-prompt", self.system_prompt(rec)]
+        kind = rec["kind"]
+        if kind == "research":
+            tools = ["Read", "Glob", "Grep", "WebSearch", "WebFetch"]
+            cmd += ["--tools", ",".join(tools), "--allowedTools", ",".join(tools),
+                    "--permission-mode", "dontAsk", "--strict-mcp-config"]
+            if cfg.work_dir and cfg.work_dir.is_dir():
+                cmd += ["--add-dir", str(cfg.work_dir)]
+        elif kind == "code":
+            branch = rec["branch"]
+            allowed = ["Read", "Glob", "Grep", "Edit", "Write",
+                       "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
+                       "Bash(git add:*)", "Bash(git commit:*)", f"Bash(git push -u origin {branch})",
+                       "Bash(python3 -m unittest:*)", "Bash(python3 -m obsidian_vault.check_map:*)",
+                       "Bash(ls:*)"]
+            cmd += ["--tools", "Read,Glob,Grep,Edit,Write,Bash", "--allowedTools", ",".join(allowed),
+                    "--disallowedTools", "Bash(git push --force:*),Bash(git push -f:*),Bash(git merge:*),Bash(git rebase:*)",
+                    "--permission-mode", "acceptEdits", "--strict-mcp-config"]
+        else:  # session: Kristian's own setup
+            cmd += ["--allowedTools", ",".join(cfg.errand_session_tools), "--permission-mode", "acceptEdits"]
+            if rec["spend_usd"] <= 0:
+                cmd += ["--disallowedTools", ",".join(COST_TOOLS)]
+            if cfg.work_dir and cfg.work_dir.is_dir():
+                cmd += ["--add-dir", str(cfg.work_dir)]
+        if cfg.errand_model:
+            cmd += ["--model", cfg.errand_model]
+        return cmd
+
+    # ---------- running ----------
+
+    def _run(self, rec: dict, cmd: list[str], cwd: str) -> None:
+        prompt = f"Errand: {rec['title']}\n\n{rec['brief']}"
+        timeout = max(60.0, self.cfg.errand_timeout_minutes * 60)
+        try:
+            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                                  cwd=cwd, timeout=timeout)
+            out, err, code = proc.stdout, proc.stderr, proc.returncode
+        except subprocess.TimeoutExpired as e:
+            out = e.stdout if isinstance(e.stdout, str) else ""
+            err, code = f"timed out after {timeout / 60:g} minutes", -1
+        except OSError as e:
+            out, err, code = "", str(e), -1
+        try:
+            Path(rec["log"]).write_text(f"$ exit {code}\n--- stdout\n{out}\n--- stderr\n{err}\n", encoding="utf-8")
+        except OSError:
+            pass
+        result, failed = "", code != 0
+        try:
+            data = json.loads(out)
+            result = str(data.get("result") or "")
+            failed = failed or bool(data.get("is_error"))
+            rec["cost_usd"] = data.get("total_cost_usd")
+            rec["turns"] = data.get("num_turns")
+        except (ValueError, AttributeError):
+            result = (out or "").strip()[-4000:]
+        if failed and not result:
+            result = (err or "").strip()[-1500:] or f"claude exited with code {code}"
+        if rec["kind"] == "code" and rec.get("worktree"):
+            log = subprocess.run(["git", "-C", rec["worktree"], "log", "--oneline", f"{rec['base']}..HEAD"],
+                                 capture_output=True, text=True).stdout.strip()
+            rec["commits"] = log.splitlines()
+        rec.update(status="failed" if failed else "done", finished=_now(), result=result)
+        with self.lock:
+            self._save(rec)
+
+    # ---------- for Tally ----------
+
+    def summary(self, rec: dict, full: bool = False) -> str:
+        head = f"Errand {rec['id']} ({rec['kind']}): {rec.get('title', '')}. Status: {rec.get('status')}."
+        if rec.get("branch"):
+            head += f" Branch: {rec['branch']}."
+        if rec.get("commits") is not None:
+            head += f" Commits: {len(rec['commits'])}."
+        if rec.get("status") in ("done", "failed"):
+            text = rec.get("result") or "(no report)"
+            if not full and len(text) > 1500:
+                text = text[:1500] + " ... (the full report is on the notice board, or call errand_report)"
+            head += f"\nReport:\n{text}"
+        return head

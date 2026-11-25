@@ -2,7 +2,9 @@ import { GlyphRenderer } from "./renderer.js";
 import { IsoRenderer } from "./iso.js";
 import { Portrait } from "./portrait.js";
 import { talk, resetConversation } from "./talk.js";
+import { renderMarkdown } from "./markdown.js";
 import * as ledger from "./ledger.js";
+import * as board from "./board.js";
 
 const $ = (id) => document.getElementById(id);
 const logEl = $("log"), form = $("talk"), input = $("say");
@@ -567,7 +569,12 @@ async function say(text) {
   state.lastSaid = text;
   try {
     await talk(text, where, {
-      delta: (t) => { setTallyState("speaking"); body.textContent += t; logEl.scrollTop = logEl.scrollHeight; },
+      delta: (t) => {
+        setTallyState("speaking");
+        body.dataset.raw = (body.dataset.raw || "") + t;
+        body.innerHTML = renderMarkdown(body.dataset.raw);
+        logEl.scrollTop = logEl.scrollHeight;
+      },
       action: onAction,
       error: (t) => log(t, "err"),
       intent: applyIntent,
@@ -577,7 +584,7 @@ async function say(text) {
     log(`Lost the connection to the vault: ${e.message}`, "err");
   }
   body.classList.remove("thinking");
-  if (body.textContent) state.lastReply = body.textContent;
+  if (body.textContent) state.lastReply = body.dataset.raw || body.textContent;
   if (!body.textContent) body.parentElement.remove();
   setTallyState("idle");
   if (state.writes !== "off") {
@@ -608,6 +615,10 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
     return;
   }
+  if (board.isOpen()) {
+    if (e.key === "Escape" || (e.key === "b" && !state.talking)) { e.preventDefault(); board.close(); }
+    return;
+  }
   if (state.talking) {
     if (e.key === "Escape") { e.preventDefault(); stopTalking(); }
     return; // typing goes to the input
@@ -617,6 +628,8 @@ window.addEventListener("keydown", (e) => {
     resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
     return;
   }
+  if (e.key === "e") return toggleTall();
+  if (e.key === "b") return board.open();
   if (e.key === "v") return setView(state.view === "iso" ? "ascii" : "iso");
   const d = KEYS[e.key];
   if (d) {
@@ -626,6 +639,13 @@ window.addEventListener("keydown", (e) => {
     move(...d);
   }
 });
+
+function toggleTall() {
+  $("bottom").classList.toggle("tall");
+  logEl.scrollTop = logEl.scrollHeight;
+  if (state.talking) input.focus();
+}
+$("enlarge").addEventListener("click", toggleTall);
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -663,6 +683,8 @@ async function boot() {
   try { saved = localStorage.getItem("vault-view"); } catch (_) { /* private mode */ }
   setView(saved === "ascii" ? "ascii" : "iso");
   window.addEventListener("resize", fit);
+  // The talk box grows and shrinks (talking, enlarged): keep the map sized to what is left.
+  bottom.addEventListener("transitionend", (e) => { if (e.propertyName === "flex-basis") fit(); });
 
   const cellAt = (ev) => {
     const r = canvas.getBoundingClientRect();
@@ -711,6 +733,7 @@ async function boot() {
 
   state.writes = st.writes || "off";
   ledger.initLedger(state.writes, log);
+  board.initBoard(log);
   if (state.writes !== "off") statusEl.append(` · writing: ${state.writes}`);
 
   log("You push open the heavy glass door and step into the vault.");

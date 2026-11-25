@@ -14,6 +14,7 @@ function el(tag, cls, text) {
 }
 
 function kindLabel(op) {
+  if (op.kind === "errand") return "errand";
   if (op.kind === "append") return op.section?.includes("coaching") ? "coaching line" : "log line";
   return op.kind === "create" ? "new note" : "note edit";
 }
@@ -40,6 +41,7 @@ function renderList(mode, size) {
 function renderDiff(pre, op) {
   pre.replaceChildren();
   if (op.stale) { pre.append(el("span", "del", op.diff)); return; }
+  if (op.kind === "errand") { pre.append(el("span", "", op.diff)); return; }
   for (const line of op.diff.split("\n")) {
     if (line.startsWith("---") || line.startsWith("+++")) continue;
     const cls = line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : line.startsWith("@@") ? "hunk" : "";
@@ -57,6 +59,7 @@ function show(id) {
   $("review-why").textContent = op.summary || "";
   renderDiff($("review-diff"), op);
   $("review-approve").disabled = !!op.stale;
+  $("review-approve").textContent = op.kind === "errand" ? "Approve and send" : "Approve and write";
   $("review-msg").textContent = op.stale ? "This change no longer applies. Reject it and ask Tally again." : "";
 }
 
@@ -76,6 +79,7 @@ async function decide(action) {
     const data = await r.json();
     if (data.ok) {
       onLog(action === "approve" ? `You sign the ledger. ${data.message}` : "You strike the entry out. Nothing was written.", "action");
+      if (action === "approve") window.dispatchEvent(new CustomEvent("vault:errands"));
       close();
     } else {
       $("review-msg").textContent = data.error;

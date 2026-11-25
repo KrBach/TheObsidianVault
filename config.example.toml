@@ -8,6 +8,10 @@ core_dir = "~/path/to/obsidian/Private"
 # Core files, loaded in this order from core_dir.
 core_files = ["bootstrap.md", "soul.md"]
 
+# The Work vault (optional). Tally may read it for work tasks (INDEX.md first), never write it,
+# and never copy work content into the Private vault. Leave empty to keep work out of the game.
+work_dir = ""
+
 # Context layer for this use case, layered on top of the core.
 # Lives in the repo because it describes the game, not Tally.
 context_file = "context/the-vault-game.md"
@@ -34,6 +38,10 @@ model = ""
 # Writing goes only through the vault tools below, never through Edit or Write.
 tools = ["Read", "Glob", "Grep"]
 
+# Let Tally look things up on the web (WebSearch, WebFetch), as the core's "look things up live"
+# rule asks. Read-only. false turns it off.
+web = true
+
 [writes]
 # How Tally may write to the vault (Claude Code brain only):
 #   "off"     nothing is written
@@ -56,3 +64,28 @@ state_dir = ".vault-state"
 [server]
 host = "127.0.0.1"
 port = 8765
+
+[errands]
+# Bigger jobs Tally writes out and sets on the desk. Nothing runs until you approve one in the ledger;
+# then a separate Claude Code session does it and Tally hears the report. Kinds:
+#   research  reads the vaults and the web, writes nothing
+#   code      changes the game in its own git worktree and branch (errand/<id>), runs the tests,
+#             commits and pushes that branch only; never main, never a merge
+#   session   your full Claude Code setup (skills, connectors, browser) in the vault folder, e.g. the
+#             Arknights data check; tools that spend art credits are blocked unless the errand
+#             carries a spending limit you approved
+enabled = true
+timeout_minutes = 45
+max_running = 2
+# Leave empty for your Claude Code default model.
+model = ""
+# Where code errands put their worktrees (default: next to this repo).
+# worktrees = "~/TheObsidianVault-errands"
+# Tools a session errand may use without asking. Names of your connectors' tools in Claude Code
+# start with mcp__<server>__; a bare mcp__<server> allows all of that server's tools.
+session_tools = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch", "mcp__claude-in-chrome"]
+
+[board]
+# Vault folders the notice board shows (read-only): notes, images and HTML pages.
+# Errand reports and links Tally pins are always there.
+folders = ["Claude outputs"]

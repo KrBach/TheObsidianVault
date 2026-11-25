@@ -12,6 +12,8 @@ import json
 import sys
 
 from .config import load_config
+from .board import Board, BoardError
+from .errands import Errands
 from .ledger import Ledger, LedgerError
 from .world import World, WorldError
 
@@ -23,6 +25,7 @@ def _schema(props: dict, required: list[str]) -> dict:
 
 
 S = {"type": "string"}
+N = {"type": "number"}
 
 TOOLS = [
     {
@@ -57,6 +60,22 @@ TOOLS = [
         }, ["old", "new", "reason"]),
     },
     {
+        "name": "log_failure",
+        "description": (
+            "Add a numbered entry to agent-failure-log.md, as the Failure log loop rule in soul.md asks: in the same "
+            "session as a correction from Kristian or a mistake you catch yourself. The file is yours, so it is "
+            "written at once, with a backup. Write 'Repeat of N' in `what` when it repeats an earlier entry."
+        ),
+        "inputSchema": _schema({
+            "date": {**S, "description": "When it happened, e.g. '2026-11-25'. Empty for today."},
+            "what": {**S, "description": "What went wrong, one or two sentences."},
+            "caught": {**S, "description": "How it was caught, e.g. 'Caught by Kristian.'"},
+            "fix": {**S, "description": "The fix or rule."},
+            "category": {**S, "description": "One of: source, ui-read, instruction, process, criterion, self-record, unchecked-claim."},
+            "operative": {**S, "description": "Where the fix now lives and changes what you do, or 'no (log only)'."},
+        }, ["what", "caught", "fix", "category", "operative"]),
+    },
+    {
         "name": "propose_edit",
         "description": (
             "Propose replacing one exact passage in an existing note in a theme folder. `old` must occur exactly "
@@ -82,6 +101,45 @@ TOOLS = [
         }, ["path", "content", "reason"]),
     },
     {
+        "name": "propose_errand",
+        "description": (
+            "Queue a bigger job at the desk as an errand. Nothing runs until Kristian approves it; then a separate "
+            "Claude Code session does it and you hear the report on a later turn. Kinds: 'research' (read the vaults "
+            "and the web, write nothing), 'code' (change the game on its own branch, run the tests, push that branch), "
+            "'session' (his full setup: skills, connectors, browser, vault edits; e.g. the Arknights data check). "
+            "For large tasks, agree the brief with him first (a short meeting), then read it back in one line."
+        ),
+        "inputSchema": _schema({
+            "kind": {**S, "description": "research, code or session."},
+            "title": {**S, "description": "A few words, shown in the ledger."},
+            "brief": {**S, "description": "The whole task for an unattended session: goal, what done looks like, where to look, limits, and what to report."},
+            "spend_usd": {**N, "description": "Only if he agreed to spend art credits: the most it may spend, in dollars. Otherwise leave it out."},
+        }, ["kind", "title", "brief"]),
+    },
+    {
+        "name": "list_errands",
+        "description": "The errands you have sent, newest first, with their status (running, done, failed).",
+        "inputSchema": _schema({}, []),
+    },
+    {
+        "name": "errand_report",
+        "description": "The full report of one errand.",
+        "inputSchema": _schema({"id": {**S, "description": "The errand id."}}, ["id"]),
+    },
+    {
+        "name": "pin_to_board",
+        "description": "Pin a link to the notice board in the game, e.g. a claude.ai artifact such as the Arknights dashboard. https only.",
+        "inputSchema": _schema({
+            "title": S, "url": S,
+            "note": {**S, "description": "Optional: one line on what it is."},
+        }, ["title", "url"]),
+    },
+    {
+        "name": "unpin_from_board",
+        "description": "Take a pinned link down from the notice board (by its url).",
+        "inputSchema": _schema({"url": S}, ["url"]),
+    },
+    {
         "name": "vault_size",
         "description": "Report the size of the warm files (bootstrap.md + soul.md) against the 35 KB guide, and how many changes wait for review.",
         "inputSchema": _schema({}, []),
@@ -89,7 +147,6 @@ TOOLS = [
 ]
 
 
-N = {"type": "number"}
 I = {"type": "integer"}
 
 GAME_TOOLS = [
@@ -196,10 +253,35 @@ def call(ledger: Ledger, name: str, args: dict) -> str:
         r = ledger.add_coaching(args.get("item", ""))
     elif name == "edit_soul":
         r = ledger.edit_soul(args.get("old", ""), args.get("new", ""), args.get("reason", ""))
+    elif name == "log_failure":
+        r = ledger.log_failure(args.get("date", ""), args.get("what", ""), args.get("caught", ""),
+                               args.get("fix", ""), args.get("category", ""), args.get("operative", ""))
     elif name == "propose_edit":
         r = ledger.propose_edit(args.get("path", ""), args.get("old", ""), args.get("new", ""), args.get("reason", ""))
     elif name == "propose_note":
         r = ledger.propose_note(args.get("path", ""), args.get("content", ""), args.get("reason", ""))
+    elif name == "propose_errand":
+        r = ledger.propose_errand(args.get("kind", ""), args.get("title", ""), args.get("brief", ""),
+                                  args.get("spend_usd") or 0)
+    elif name == "list_errands":
+        recs = Errands(ledger.cfg).all()[:15]
+        return "\n".join(Errands(ledger.cfg).summary(r).split("\n")[0] for r in recs) or "No errands yet."
+    elif name == "errand_report":
+        errands = Errands(ledger.cfg)
+        rec = errands.get(args.get("id", ""))
+        if not rec:
+            raise LedgerError("no errand with that id")
+        return errands.summary(rec, full=True)
+    elif name == "pin_to_board":
+        try:
+            return Board(ledger.cfg).pin(args.get("title", ""), args.get("url", ""), args.get("note", ""))
+        except BoardError as e:
+            raise LedgerError(str(e))
+    elif name == "unpin_from_board":
+        try:
+            return Board(ledger.cfg).unpin(args.get("url", ""))
+        except BoardError as e:
+            raise LedgerError(str(e))
     elif name == "vault_size":
         n = len(ledger.pending())
         return f"{ledger.size_report()} {n} change(s) wait for review. Writing mode: {ledger.mode}."

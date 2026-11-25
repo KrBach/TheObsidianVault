@@ -26,7 +26,7 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #map { image-rendering: pixelated; cursor: pointer; }
 #hover { position: absolute; left: 8px; bottom: 6px; color: var(--dim); pointer-events: none; text-shadow: 0 0 4px #000; }
 
-#side { width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 8px; }
+#side { width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
 .panel { background: var(--panel); border: 1px solid var(--line); padding: 8px; }
 .label { color: var(--dim); font-size: 11px; letter-spacing: 0.15em; margin-bottom: 4px; }
 .room { color: var(--accent); }
@@ -61,6 +61,11 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #fatal[hidden] { display: none; }
 #fatal { position: fixed; left: 16px; right: 16px; top: 16px; z-index: 50; padding: 12px; background: #2a0d12; border: 1px solid var(--warn); color: var(--warn); white-space: pre-wrap; }
 #bottom.talking { flex-basis: 210px; }
+#bottom.tall, #bottom.tall.talking { flex-basis: 52%; }
+#enlarge { background: transparent; border: 1px solid var(--line); color: var(--dim); font: inherit; cursor: pointer; padding: 0 6px; }
+#enlarge:hover, #bottom.tall #enlarge { color: var(--text); }
+#log a { color: var(--accent); }
+#log code { color: var(--text); background: rgba(255, 255, 255, 0.06); padding: 0 3px; }
 #talk { display: flex; gap: 8px; border-top: 1px solid var(--line); padding: 6px 8px; }
 #talk .prompt { color: var(--you); }
 #say { flex: 1; background: transparent; border: 0; color: var(--text); font: inherit; outline: none; }
@@ -103,3 +108,23 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
   0%, 100% { box-shadow: 0 0 0 1px #000, 0 0 6px var(--frame); }
   50% { box-shadow: 0 0 0 1px #000, 0 0 18px var(--frame); }
 }
+
+/* The notice board: reports, pages and pinned links, over the map. */
+#board[hidden] { display: none; }
+#board { position: absolute; inset: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(10, 6, 16, 0.97); border: 1px solid var(--accent); padding: 10px; z-index: 6; }
+#board .board-body { flex: 1 1 auto; display: flex; gap: 8px; min-height: 0; }
+#board-list { flex: 0 0 34%; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
+#board-view { flex: 1 1 auto; overflow: auto; background: #050308; border: 1px solid var(--line); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+#board-view a { color: var(--accent); word-break: break-all; }
+#board-close { background: none; border: 0; color: var(--dim); font: inherit; font-size: 18px; cursor: pointer; }
+#board-count { color: var(--you); letter-spacing: 0; margin-left: 4px; }
+.board-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: transparent; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 4px 6px; cursor: pointer; }
+.board-item:hover { border-color: var(--accent); }
+.board-item .kind { color: var(--you); font-size: 11px; letter-spacing: 0.1em; }
+.board-item .sum { color: var(--dim); font-size: 11px; }
+.board-text { white-space: pre-wrap; word-break: break-word; }
+.board-text code { background: rgba(255, 255, 255, 0.06); padding: 0 3px; }
+.board-img { max-width: 100%; height: auto; image-rendering: auto; align-self: center; }
+.board-frame { flex: 1 1 auto; width: 100%; min-height: 400px; border: 0; background: #fff; }
+.link-button { background: transparent; border: 0; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-align: left; }
+.link-button:hover { text-decoration: underline; }

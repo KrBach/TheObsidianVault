@@ -30,7 +30,7 @@ It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so
 
 Set `brain.kind` in `config.toml`:
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set `tally.work_dir` to your Work vault to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`); press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
@@ -41,6 +41,7 @@ With the Claude Code brain, Tally gets a few vault tools from a small built-in M
 
 - **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (Europe/Copenhagen) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
 - **add_coaching_item**: one new line under "For the coaching thread" in `soul.md`.
+- **log_failure**: one new numbered entry in `agent-failure-log.md` (Tally's own file, written like `soul.md`), as the failure-log loop in `soul.md` asks.
 - **propose_edit**: replace one exact passage in a note in a theme folder.
 - **propose_note**: create a new note in a theme folder.
 - **vault_size**: how big `bootstrap.md` + `soul.md` are against the 35 KB guide.
@@ -59,6 +60,18 @@ soul.md is Tally's own: interaction-log lines, coaching items and `edit_soul` ch
 
 Tests (against a made-up vault in a temp folder): `python3 -m unittest discover -s tests`.
 
+## Errands, meetings and the notice board
+
+The conversation itself stays small and read-only. Bigger jobs go out as **errands**: Tally writes a brief (`propose_errand`) and sets it on the desk, and nothing runs until you click **Approve and send** in the ledger. The game then starts a separate `claude -p` run for it in the background ([obsidian_vault/errands.py](obsidian_vault/errands.py)) and tells Tally the outcome on your next message. There are three kinds:
+
+- **research**: reads the vaults and the web; writes nothing. The report is the result.
+- **code**: changes this game in its own git worktree on a branch `errand/<id>` (never the copy you are running), runs the tests, commits and pushes that one branch. It may not push anywhere else, merge, rebase or force-push. You review it as a pull request.
+- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like the Arknights data check. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt.
+
+For large tasks Tally holds a short **meeting** first (goal, what done looks like, limits, cost) and reads the brief back before queuing it. You can call one yourself, for example at the map table.
+
+The **notice board** (`b`, or the panel on the right) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
+
 ## Controls
 
 | Input | Action |
@@ -70,9 +83,11 @@ Tests (against a made-up vault in a temp folder): `python3 -m unittest discover 
 | `v` | switch between the isometric and the ASCII view |
 | mouse wheel | zoom (isometric view) |
 | `n` | start a new conversation |
+| `e` | enlarge the talk box for long answers |
+| `b` | open the notice board (replaces the `b` diagonal step) |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
-The conversation lives in the server, so reloading the page keeps it. Restart the server or press `n` for a fresh one.
+The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.
 
 ## Art
 
