@@ -113,6 +113,8 @@ Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.js
 | `p` | open the ledger |
 | `x` / `z` | sit / lie down (again to get up) |
 | the notice board | on the west wall of the Entrance Hall: walk into it or click it to read it |
+| 🎙 (next to the talk line) | speak instead of typing: click, talk, and pause; it sends what you said. Uses the browser's own speech recognition (Safari: Apple's dictation; Chrome: Google's servers) |
+| Esc menu, "reads replies aloud" | Tally reads each reply aloud with the system voice; kept per browser |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
 The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.
@@ -142,9 +144,16 @@ Tally remembers their own moves. Every choice of where to be, from a tick or fro
 
 Tally stays where they were between sessions. The game saves Tally's position, what they are doing and why, their pose and the rest of any planned round to `.vault-state/tally.json` (every few seconds when it changes, and when the tab closes). Next time the game opens, Tally is still there, lying on the couch or halfway to the map room. Walking with the owner ends when they leave. You always come in through the front door. Delete `tally.json` to have Tally start at the desk again.
 
+## Residents: the cat and the imp
+
+Two residents are scripted in the browser, with no model calls, so they cost nothing ([web/js/denizens.js](web/js/denizens.js)). Both are drawn in code until they have sprites.
+
+- **The cat** wanders between warm and quiet places (braziers, the fireplace, the pool, the couch), naps there, and sits on the ledger when three or more things are waiting in it. It never settles in or next to a doorway, and it blocks nobody. Right-click it to look at it or pet it.
+- **The imp** is the errand runner. When an errand starts, it hops off Tally's desk and runs out of the vault; when the errand is done, it comes back in with the report and pins it to the notice board.
+
 ## Tally arranges the vault
 
-The vault is Tally's to arrange. In conversation Tally can look at the map with coordinates (`look_at_map`), place or clear furniture (`place_furniture`, `clear_furniture`: candles, braziers, papers, pools, writing desks, map tables, graph nodes) and name new places to go (`name_place`). Every change goes through the same map check as the repo, so nothing can block a door or cut a room off; walls, doors, shelves and the desk are fixed. Tally's changes are kept in `.vault-state/world.json` (git-ignored, so a pull never overwrites them) and laid over `world/vault.json`; `.vault-state/world-journal.jsonl` lists every change. Delete `world.json` to put the vault back as built. New rooms are still built by hand in the repo for now.
+The vault is Tally's to arrange. In conversation Tally can look at the map with coordinates (`look_at_map`), place or clear furniture (`place_furniture`, `clear_furniture`: candles, braziers, papers, pools, writing desks, map tables, graph nodes) and name new places to go (`name_place`). Every change goes through the same map check as the repo, so nothing can block a door or cut a room off; walls, doors, shelves, the desk and the fireplace are fixed, and a change Tally made where the built map now has something fixed is ignored. A built-in place on furniture Tally moved or cleared is dropped rather than left pointing at bare floor. Tally's changes are kept in `.vault-state/world.json` (git-ignored, so a pull never overwrites them) and laid over `world/vault.json`; `.vault-state/world-journal.jsonl` lists every change. Delete `world.json` to put the vault back as built. New rooms are still built by hand in the repo for now.
 
 The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. Run it before you commit a map change.
 

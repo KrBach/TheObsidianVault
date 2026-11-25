@@ -131,10 +131,14 @@ async function checkErrands() {
   let running = false;
   for (const e of list) {
     const before = known.get(e.id);
+    if (before === undefined && e.status === "running" && known.size) {
+      window.dispatchEvent(new CustomEvent("vault:errand-out", { detail: e }));
+    }
     if (before === "running" && e.status !== "running") {
+      window.dispatchEvent(new CustomEvent("vault:errand-back", { detail: e }));
       onLog(e.status === "done"
-        ? `A runner comes back: the errand "${e.title}" is done. Its report is on the notice board (b).`
-        : `A runner comes back empty-handed: the errand "${e.title}" failed. See the notice board (b).`, "action");
+        ? `The errand "${e.title}" is done. Its report is on the notice board (b).`
+        : `The errand "${e.title}" failed. The imp's report is on the notice board (b).`, "action");
       if (isOpenFlag) refresh();
     }
     known.set(e.id, e.status);

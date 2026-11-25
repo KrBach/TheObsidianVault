@@ -8,6 +8,8 @@ import * as board from "./board.js";
 import { login, logout } from "./login.js";
 import { names, setNames, fill, fillPage } from "./names.js";
 import * as character from "./character.js";
+import { createDenizens } from "./denizens.js";
+import * as voice from "./voice.js";
 
 window.vaultStarted = true; // the scripts loaded; the door may still be closed
 
@@ -599,6 +601,7 @@ async function tallyChooses() {
   }
   if (!res || state.busy || state.talking) return;
   const mine = roomAt(state.player.x, state.player.y), theirs = roomAt(t.x, t.y);
+  if (res.thinking) window.dispatchEvent(new CustomEvent("vault:errands"));
   if (res.thinking) log(`Tally goes quiet for a moment, turning something over: ${res.thinking}. A runner sets off with the question; you will hear what came of it.`, "action");
   if (res.say) {
     const line = logLine(mine === theirs ? "Tally" : `Tally (in ${theirs ? theirs.name : "the vault"})`, "tally");
@@ -812,7 +815,7 @@ async function say(text) {
     log(`Lost the connection to the vault: ${e.message}`, "err");
   }
   body.classList.remove("thinking");
-  if (body.textContent) state.lastReply = body.dataset.raw || body.textContent;
+  if (body.textContent) { state.lastReply = body.dataset.raw || body.textContent; voice.say(state.lastReply); }
   if (!body.textContent) body.parentElement.remove();
   setTallyState("idle");
   if (state.writes !== "off") {
@@ -851,6 +854,12 @@ function ctxOptions(x, y) {
   const p = state.player, room = roomAt(x, y), opts = [];
   const here = p.x === x && p.y === y;
   let head;
+  const resident = state.denizens?.at(x, y);
+  if (resident === "cat") {
+    return { head: "the vault cat", opts: [["Look at the cat", () => state.denizens.lookAtCat()],
+      ["Pet the cat", () => state.denizens.petCat()]] };
+  }
+  if (resident === "imp") return { head: "an imp", opts: [["Look at the imp", () => state.denizens.lookAtImp()]] };
   if (x === state.tally.x && y === state.tally.y) {
     head = "Tally";
     opts.push(["Talk to Tally", () => walkTo(x, y)], ["Look at Tally", lookAtTally]);
@@ -1013,8 +1022,17 @@ form.addEventListener("submit", (e) => {
   const text = input.value.trim();
   if (!text) return;
   input.value = "";
+  voice.hush();
   say(text);
 });
+
+// Voice: the mic next to the talk line, and Tally reading replies aloud (switched in the menu).
+if (voice.canListen()) $("mic").hidden = false;
+$("mic").addEventListener("click", () => voice.listen(input, () => form.requestSubmit(), log));
+if (voice.canSpeak()) $("m-voice").hidden = false;
+const showVoice = () => { $("voice-state").textContent = voice.speaking() ? "on" : "off"; };
+showVoice();
+$("m-voice").addEventListener("click", () => { voice.setSpeaking(!voice.speaking()); showVoice(); });
 
 // ---------- boot ----------
 
@@ -1039,6 +1057,11 @@ async function boot() {
   [state.player.x, state.player.y] = w.spawn;
   [state.tally.x, state.tally.y] = w.tally;
   labelShelves();
+  // the cat and the errand imp: scripted here, no model calls
+  state.denizens = createDenizens(w, { tileAt, log });
+  setInterval(() => state.denizens.tick(!isGuest() && ledger.pendingCount() >= 3), 150);
+  window.addEventListener("vault:errand-out", (ev) => state.denizens.errandOut(ev.detail));
+  window.addEventListener("vault:errand-back", (ev) => state.denizens.errandBack(ev.detail));
 
   state.player.rx = state.player.x; state.player.ry = state.player.y;
   state.tally.rx = state.tally.x; state.tally.ry = state.tally.y;
@@ -1162,9 +1185,15 @@ async function boot() {
       }
       if (e.moving) { e.declined = null; e.lastAuto = null; }
     }
+    const residents = state.denizens.entities();
+    for (const e of residents) {
+      e.rx += (e.x - e.rx) * 0.25;
+      e.ry += (e.y - e.ry) * 0.25;
+      e.moving = Math.abs(e.x - e.rx) + Math.abs(e.y - e.ry) > 0.05;
+    }
     requestAnimationFrame(frame); // first, so one bad frame cannot stop the loop
     try {
-      renderers[state.view].draw(w, [state.tally, state.player], t, state.player);
+      renderers[state.view].draw(w, [...residents, state.tally, state.player], t, state.player);
       if (state.talking) { portraits.tally.draw(t); portraits.player.draw(t); }
     } catch (e) {
       if (!state.drawError) {
