@@ -21,6 +21,8 @@ function kindLabel(op) {
   return op.kind === "create" ? "new note" : "note edit";
 }
 
+export const pendingCount = () => items.length;
+
 function renderList(mode, size) {
   const list = $("ledger-list");
   list.replaceChildren();

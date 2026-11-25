@@ -567,6 +567,32 @@
     }
   },
   "creatures": {
+    "cat": {
+      "glyph": "c",
+      "fg": "#9a9aa8",
+      "name": "the vault cat",
+      "desc": "A black cat with amber eyes. No job, no name yet.",
+      "iso": {
+        "shape": "cat",
+        "color": "#2e2b3a",
+        "eyes": "#e0a030"
+      }
+    },
+    "imp": {
+      "glyph": "i",
+      "fg": "#e06a3a",
+      "name": "an imp",
+      "desc": "The vault's errand runner.",
+      "iso": {
+        "shape": "imp",
+        "color": "#6a2a20",
+        "light": {
+          "color": "#ff8a50",
+          "radius": 1.8,
+          "strength": 0.3
+        }
+      }
+    },
     "player": {
       "glyph": "@",
       "fg": "#ffe066",

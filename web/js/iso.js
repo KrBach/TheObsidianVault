@@ -659,6 +659,73 @@ export class IsoRenderer {
 
   // ---------- creatures ----------
 
+  // The cat, drawn in code until it has a sprite: sitting, walking or curled up asleep.
+  drawCat(e, sx, sy, t, light, iso) {
+    const c = this.ctx, body = rgb(this.col(iso.color || "#2e2b3a"), light, 1.7);
+    const lift = e.onDesk ? 17 : 0, y0 = sy - lift;
+    c.save();
+    c.fillStyle = "rgba(0,0,0,0.35)";
+    c.beginPath(); c.ellipse(sx, y0, 8, 3.5, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = body;
+    if (e.sleeping && !e.moving) {
+      // a curled loaf, breathing, tail around the front
+      const br = 1 + 0.04 * Math.sin(t * 2);
+      c.beginPath(); c.ellipse(sx, y0 - 4, 7.5 * br, 4.5 * br, 0, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(sx - 5, y0 - 5, 3.2, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.moveTo(sx - 7, y0 - 7.5); c.lineTo(sx - 6.5, y0 - 10.5); c.lineTo(sx - 4.5, y0 - 8); c.fill();
+      c.strokeStyle = body; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(sx + 6, y0 - 2); c.quadraticCurveTo(sx + 2, y0 + 1, sx - 4, y0 - 1); c.stroke();
+    } else {
+      const step = e.moving ? Math.sin(t * 18) * 1.2 : 0;
+      const face = (e.x - e.rx) + (e.y - e.ry) >= 0 ? 1 : -1; // looks the way it walks
+      // body and chest
+      c.beginPath(); c.ellipse(sx, y0 - 6 - Math.abs(step) * 0.3, 6, 4.5, 0, 0, Math.PI * 2); c.fill();
+      // head with ears
+      const hx = sx + 4 * face, hy = y0 - 12;
+      c.beginPath(); c.arc(hx, hy, 3.4, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.moveTo(hx - 3, hy - 1.5); c.lineTo(hx - 2.4, hy - 6); c.lineTo(hx - 0.5, hy - 3); c.fill();
+      c.beginPath(); c.moveTo(hx + 3, hy - 1.5); c.lineTo(hx + 2.4, hy - 6); c.lineTo(hx + 0.5, hy - 3); c.fill();
+      // tail, swaying
+      c.strokeStyle = body; c.lineWidth = 2;
+      const sway = Math.sin(t * 2.2 + e.rx) * 3;
+      c.beginPath(); c.moveTo(sx - 5 * face, y0 - 6); c.quadraticCurveTo(sx - 10 * face, y0 - 9, sx - 9 * face + sway, y0 - 16); c.stroke();
+      // legs while walking
+      if (e.moving) {
+        c.lineWidth = 1.6;
+        c.beginPath(); c.moveTo(sx - 3, y0 - 3); c.lineTo(sx - 3 + step, y0); c.moveTo(sx + 3, y0 - 3); c.lineTo(sx + 3 - step, y0); c.stroke();
+      }
+      // amber eyes
+      c.fillStyle = iso.eyes || "#e0a030";
+      const blink = Math.sin(t * 0.7 + e.rx * 3) > 0.97;
+      if (!blink) { c.fillRect(hx - 1.8, hy - 0.8, 1.2, 1.2); c.fillRect(hx + 0.8, hy - 0.8, 1.2, 1.2); }
+    }
+    c.restore();
+  }
+
+  // The errand imp: small, soot-coloured, horned, in a hurry; a rolled report when it brings one back.
+  drawImp(e, sx, sy, t, light, iso) {
+    const c = this.ctx, col = this.col(iso.color || "#6a2a20");
+    const hop = e.moving ? Math.abs(Math.sin(t * 20)) * 3 : Math.sin(t * 3) * 0.5;
+    c.save();
+    c.globalAlpha = Math.max(0, Math.min(1, e.alpha ?? 1));
+    c.fillStyle = "rgba(0,0,0,0.35)";
+    c.beginPath(); c.ellipse(sx, sy, 6, 3, 0, 0, Math.PI * 2); c.fill();
+    const y0 = sy - hop;
+    c.fillStyle = rgb(col, light, 1.3);
+    c.beginPath(); c.ellipse(sx, y0 - 7, 4.5, 6, 0, 0, Math.PI * 2); c.fill(); // body
+    c.beginPath(); c.arc(sx, y0 - 15, 3.6, 0, Math.PI * 2); c.fill(); // head
+    c.fillStyle = rgb([200, 180, 150], light, 1);
+    c.beginPath(); c.moveTo(sx - 3, y0 - 17); c.lineTo(sx - 4.5, y0 - 22); c.lineTo(sx - 1.5, y0 - 18); c.fill(); // horns
+    c.beginPath(); c.moveTo(sx + 3, y0 - 17); c.lineTo(sx + 4.5, y0 - 22); c.lineTo(sx + 1.5, y0 - 18); c.fill();
+    c.fillStyle = "#ffcf60";
+    c.fillRect(sx - 2, y0 - 16, 1.3, 1.3); c.fillRect(sx + 0.8, y0 - 16, 1.3, 1.3); // eyes
+    if (e.carrying) {
+      c.fillStyle = rgb([226, 216, 192], light, 1);
+      c.save(); c.translate(sx + 5, y0 - 9); c.rotate(-0.6); c.fillRect(-1.5, -5, 3, 10); c.restore();
+    }
+    c.restore();
+  }
+
   drawCreature(e, t, light) {
     const c = this.ctx;
     const def = this.creatures[e.kind];
@@ -730,6 +797,9 @@ export class IsoRenderer {
       if (e.state === "thinking") this.thinkingMotes(sx, head - 4, t - (e.stateSince ?? t), this.col(iso.glow || "#ffffff"));
       return;
     }
+
+    if (iso.shape === "cat") return this.drawCat(e, sx, sy, t, light, iso);
+    if (iso.shape === "imp") return this.drawImp(e, sx, sy, t, light, iso);
 
     // placeholder figure: robe, hood or head
     const bob = e.moving ? Math.abs(Math.sin(t * 14)) * 2 : Math.sin(t * 2 + e.rx) * 0.6;
