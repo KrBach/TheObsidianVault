@@ -179,19 +179,6 @@ function tallyNow() {
   return `standing in ${r ? r.name : "the vault"}`;
 }
 
-// A painted portrait, small, in the talk box (the cat's, when you look at it).
-function logPicture(p) {
-  if (!p?.image) return;
-  const div = document.createElement("div");
-  div.className = "picture";
-  const img = document.createElement("img");
-  img.src = p.image; img.alt = "";
-  if (p.frame) img.style.borderColor = p.frame;
-  img.addEventListener("load", () => { logEl.scrollTop = logEl.scrollHeight; });
-  div.append(img);
-  logEl.append(div);
-}
-
 function lookAtTally() {
   const t = state.tally;
   log(`Tally: the vault's archivist, in a plain dark coat, ink on their fingers, the ledger under one arm. ` +
@@ -555,6 +542,46 @@ function catText() {
 // Pet, feed, play and call go to the server, which has the rules (the same for Tally); the
 // answer is a one-line emote and an effect the cat plays out. All but calling need you next to it.
 
+// Being with the cat is a dialogue of its own: its portrait takes Tally's place in the talk box,
+// and what you can do with it is a row of buttons (it never speaks). Esc, or walking off, ends it.
+const catActions = $("cat-actions");
+function openCat() {
+  if (state.talking) stopTalking();
+  if (state.withCat) return;
+  state.withCat = true;
+  bottom.classList.add("talking", "with-cat");
+  catActions.hidden = false;
+  for (const b of catActions.querySelectorAll(".owner-only")) b.hidden = isGuest();
+  portraits?.player.setSpeaking(false);
+  portraits?.cat?.setSpeaking(true);
+}
+function closeCat(quiet = false) {
+  if (!state.withCat) return;
+  state.withCat = false;
+  bottom.classList.remove("with-cat");
+  if (!state.talking) bottom.classList.remove("talking");
+  catActions.hidden = true;
+  portraits?.cat?.setSpeaking(false);
+  if (!quiet) log(`You leave ${state.denizens.name} to it.`, "action");
+}
+// From the right-click menu: go over to the cat (calling works from where you are), then open the dialogue.
+function withCat(action) {
+  const d = state.denizens, p = state.player;
+  if (action === "call" || d.next(p.x, p.y)) { openCat(); return catAct(action); }
+  const path = findPath(d.around());
+  if (path === null) return log("You can't find a way over to the cat.");
+  if (state.talking) stopTalking();
+  state.path = path;
+  state.onArrive = () => { if (!d.next(state.player.x, state.player.y)) return log(`${d.name} has moved off.`); openCat(); catAct(action); };
+  if (!path.length) { const go = state.onArrive; state.onArrive = null; go(); }
+}
+function catAct(action) {
+  if (action === "leave") return closeCat();
+  if (action === "look") return state.denizens.lookAtCat();
+  return tendCat(action);
+}
+catActions.addEventListener("click", (ev) => { const a = ev.target.closest("button")?.dataset.cat; if (a) catAct(a); });
+
 async function tendCat(action, walked = false) {
   const d = state.denizens, c = d.cat, p = state.player;
   if (action !== "call" && !d.next(p.x, p.y)) {
@@ -820,6 +847,7 @@ function startTalking() {
     log(`Tally is in ${r ? r.name : "the vault"}. Walk up to Tally first.`);
     return;
   }
+  closeCat(true);
   if (!state.talking) log("Tally looks up from the ledger.", "action");
   state.talking = true;
   form.hidden = false;
@@ -941,9 +969,9 @@ function ctxOptions(x, y) {
   const resident = state.denizens?.at(x, y);
   if (resident === "cat") {
     const n = state.denizens.name;
-    const catOpts = [[`Look at ${n}`, () => { logPicture(state.world.creatures.cat?.portrait); state.denizens.lookAtCat(); }], [`Pet ${n}`, () => tendCat("pet")]];
-    if (!isGuest()) catOpts.push([`Feed ${n}`, () => tendCat("feed")], [`Play with ${n} (the quill on a string)`, () => tendCat("play")]);
-    catOpts.push([`Call ${n} ("pspsps")`, () => tendCat("call")]);
+    const catOpts = [[`Look at ${n}`, () => withCat("look")], [`Pet ${n}`, () => withCat("pet")]];
+    if (!isGuest()) catOpts.push([`Feed ${n}`, () => withCat("feed")]);
+    catOpts.push([`Play with ${n} (the quill on a string)`, () => withCat("play")], [`Call ${n} ("pspsps")`, () => withCat("call")]);
     return { head: n, opts: catOpts };
   }
   if (resident === "imp") return { head: "an imp", opts: [["Look at the imp", () => state.denizens.lookAtImp()]] };
@@ -1085,6 +1113,7 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); stopTalking(); }
     return; // typing goes to the input
   }
+  if (state.withCat && e.key === "Escape") { e.preventDefault(); return closeCat(); }
   if (e.key === "t" || e.key === "Enter") { e.preventDefault(); return startTalking(); }
   if (e.key === "Escape" || e.key === "m") { e.preventDefault(); return openMenu(); }
   if (e.key === "n") return newConversation();
@@ -1157,6 +1186,10 @@ async function boot() {
   w.catBowlFull = () => Date.now() - state.denizens.cat.fedAt < 20 * 60 * 1000; // food in the bowl a while after a meal
   setInterval(() => state.denizens.tick(!isGuest() && ledger.pendingCount() >= 4), 150);
   setInterval(() => saveCat(), 5000);
+  setInterval(() => { // walking away from the cat, or the cat walking off, ends the dialogue
+    const c = state.denizens.cat, p = state.player;
+    if (state.withCat && !state.path.length && Math.max(Math.abs(c.x - p.x), Math.abs(c.y - p.y)) > 3) closeCat();
+  }, 500);
   window.addEventListener("vault:errand-out", (ev) => state.denizens.errandOut(ev.detail));
   window.addEventListener("vault:errand-back", (ev) => state.denizens.errandBack(ev.detail));
 
@@ -1216,6 +1249,7 @@ async function boot() {
   portraits = {
     tally: new Portrait($("portrait-tally"), w.creatures.tally),
     player: new Portrait($("portrait-player"), w.creatures.player),
+    cat: w.creatures.cat ? new Portrait($("portrait-cat"), w.creatures.cat) : null,
   };
   setInterval(stepAlongPath, 120);
   state.tally.post = (w.tally_posts || [])[0];
@@ -1234,7 +1268,7 @@ async function boot() {
     setInterval(tallyChooses, tickMin * 60000);
     setTimeout(tallyChooses, 60000); // a first choice of their own soon after you arrive
   }
-  window.vault = { state, renderers, portraits, tallyChooses, applyIntent, ringBell, reloadWorld, tendCat }; // handy from the browser console
+  window.vault = { state, renderers, portraits, tallyChooses, applyIntent, ringBell, reloadWorld, tendCat, withCat }; // handy from the browser console
 
   const st = w.status;
   const statusEl = $("status");
@@ -1292,6 +1326,7 @@ async function boot() {
     try {
       renderers[state.view].draw(w, [...residents, state.tally, state.player], t, state.player);
       if (state.talking) { portraits.tally.draw(t); portraits.player.draw(t); }
+      if (state.withCat) { portraits.cat?.draw(t); portraits.player.draw(t); }
     } catch (e) {
       if (!state.drawError) {
         state.drawError = true;

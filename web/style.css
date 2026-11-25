@@ -46,6 +46,13 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 /* Portraits show only while talking to Tally. */
 .portrait { display: none; margin: 8px; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px; }
 #bottom.talking .portrait { display: flex; }
+/* With the cat: its portrait takes Tally's place, and the talk line becomes a row of things to do. */
+#bottom .portrait#portrait-cat, #bottom.with-cat .portrait#portrait-tally { display: none; }
+#bottom.with-cat .portrait#portrait-cat { display: flex; }
+#cat-actions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding: 6px 8px; }
+#cat-actions[hidden] { display: none; }
+#cat-actions button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 3px 10px; font: inherit; cursor: pointer; }
+#cat-actions button:hover, #cat-actions button:focus-visible { border-color: var(--accent); color: var(--accent); }
 .portrait .art { position: relative; width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
 .portrait .art [hidden] { display: none !important; }
 .portrait .art video.clip { position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease; }
@@ -60,7 +67,6 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #log .action { color: var(--dim); font-style: italic; }
 #log .sys { color: var(--dim); }
 #log .err { color: var(--warn); }
-#log .picture img { display: block; width: 160px; max-width: 45%; height: auto; margin: 4px 0; border: 2px solid var(--dim); border-radius: 3px; }
 #log .thinking::after { content: "▌"; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
