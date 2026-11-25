@@ -100,7 +100,19 @@ model = ""
 # worktrees = "~/TheObsidianVault-errands"
 # Tools a session errand may use without asking. Names of your connectors' tools in Claude Code
 # start with mcp__<server>__; a bare mcp__<server> allows all of that server's tools.
-session_tools = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch", "mcp__claude-in-chrome"]
+session_tools = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch", "mcp__mcp-safari"]
+# The browser a session errand gets. The Claude desktop app's built-in browser cannot reach a run the
+# game starts, so:
+#   "safari"  MCPSafari (the mcp-safari server in ~/.claude.json, bridged to its Safari extension). The
+#             mcp__mcp-safari tools are always allowed. Keep Safari open with the extension on, and grant
+#             it the sites errands need (Website access = Ask would wait for an answer nobody gives).
+#   "chrome"  Claude in Chrome: the run starts with `claude --chrome` and mcp__claude-in-chrome is allowed.
+#             Keep Chrome open with the extension signed in.
+#   "off"     no browser.
+# Approving a session errand while the browser is not running fails at once (checked with pgrep).
+browser = "safari"
+# The process to check for; empty = "Safari" or "Google Chrome", to match the browser.
+browser_app = ""
 
 [board]
 # Vault folders the notice board shows (read-only): notes, images and HTML pages.

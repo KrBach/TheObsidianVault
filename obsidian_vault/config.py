@@ -16,7 +16,10 @@ DEFAULT_FOLDERS = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments
 WRITE_MODES = ("off", "review", "direct")
 # Tools a "session" errand may use without asking: your own Claude Code setup, skills and browser.
 DEFAULT_SESSION_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebSearch", "WebFetch",
-                         "mcp__claude-in-chrome"]
+                         "mcp__mcp-safari"]
+# The browsers a session errand can have ([errands] browser), and the process each needs running.
+BROWSERS = ("safari", "chrome", "off")
+BROWSER_APPS = {"safari": "Safari", "chrome": "Google Chrome"}
 
 
 @dataclass
@@ -48,6 +51,12 @@ class Config:
     errand_repo: Path = REPO_ROOT  # where "code" errands branch from (in a git worktree)
     errand_worktrees: Path = REPO_ROOT.parent / "TheObsidianVault-errands"
     errand_session_tools: list[str] = field(default_factory=lambda: list(DEFAULT_SESSION_TOOLS))
+    # The browser a session errand gets: "safari" (MCPSafari, the mcp-safari server), "chrome" (Claude in
+    # Chrome, started with `claude --chrome`) or "off". The desktop app's built-in browser cannot reach a
+    # run the game starts.
+    errand_browser: str = "safari"
+    # The process that must be running before a session errand starts; "" = the browser's usual name.
+    errand_browser_app: str = ""
     # The notice board: what the game may show. Vault folders (relative to core_dir), read-only.
     board_folders: list[str] = field(default_factory=lambda: ["Claude outputs"])
     # Who is who ([names]): the vault's owner and their companion. Nothing personal lives in the code.
@@ -136,6 +145,12 @@ def load_config(path: Path | None = None) -> Config:
     if errands.get("worktrees"):
         cfg.errand_worktrees = _expand(errands["worktrees"])
     cfg.errand_session_tools = list(errands.get("session_tools", DEFAULT_SESSION_TOOLS))
+    browser = str(errands.get("browser", "safari")).strip().lower() or "off"
+    if browser not in BROWSERS:
+        print(f'note: errands.browser "{browser}" is not one of {", ".join(BROWSERS)}; using "off".')
+        browser = "off"
+    cfg.errand_browser = browser
+    cfg.errand_browser_app = str(errands.get("browser_app", "")).strip()
     cfg.board_folders = list(data.get("board", {}).get("folders", ["Claude outputs"]))
     from .names import DEFAULT_COMPANION, DEFAULT_OWNER, clean_name
     names = data.get("names", {})
