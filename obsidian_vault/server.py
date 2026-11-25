@@ -12,6 +12,7 @@ from .brains import Brain, make_brain
 from .errands import Errands
 from .config import REPO_ROOT, Config, load_config
 from .ledger import Ledger, LedgerError
+from .moves import MoveLog
 from .persona import Persona, load_persona, vault_shelves
 from .tick import Ticker
 from .world import World
@@ -27,6 +28,7 @@ class Game:
         self.errands = Errands(cfg)
         self.board = Board(cfg)
         self.ledger = Ledger(cfg, on_errand=self.errands.start)
+        self.moves = MoveLog(cfg.state_dir)
         self.ticker = Ticker(cfg, self.brain)
         self.layout = World(cfg.state_dir)
 
@@ -148,6 +150,12 @@ def make_handler(game: Game):
             if finished:
                 news = "\n\n".join(game.errands.summary(r) for r in finished)
                 text = f"<errands_finished>\n{news}\n</errands_finished>\n{text}"
+            memory = game.moves.for_prompt(6)
+            if memory:
+                text = (f"<your_recent_moves>\nYour own recent choices about where to be, written down when you made "
+                        f"them (oldest first). The ones made between conversations come from your short check-ins, "
+                        f"with a brief sketch of you rather than this whole conversation; they are still your "
+                        f"choices and your reasons.\n{memory}\n</your_recent_moves>\n{text}")
             if where:
                 text = f"<game_state>{where}</game_state>\n{text}"
 
@@ -163,6 +171,8 @@ def make_handler(game: Game):
                         # Tally's tools said where to be, or changed the room: tell the game before closing.
                         intent = game.layout.take_intent()
                         if intent:
+                            game.moves.add("talk", intent.get("kind", ""), intent.get("name", ""),
+                                           intent.get("why", ""), room=intent.get("room", ""))
                             self.wfile.write(f"data: {json.dumps({'type': 'intent', **intent})}\n\n".encode())
                         if game.layout.version() != layout_before:
                             self.wfile.write(f"data: {json.dumps({'type': 'world'})}\n\n".encode())

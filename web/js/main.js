@@ -234,7 +234,8 @@ function stepAlongPath() {
 
 // ---------- Tally moves ----------
 // Tally always has something they are doing, and why (state.tally.doing):
-//   round   walking between the posts in world.tally_posts on their own (the default)
+//   round   no choice in force. With ticks on, Tally stays put until the next tick chooses; with
+//           ticks off, the game walks Tally between world.tally_posts and says it is not their choice
 //   go      walking to a place they chose, then staying there
 //   stay    staying where they are
 //   follow  walking a step or two behind Kristian
@@ -251,6 +252,9 @@ function tallyFree(x, y) {
   return !!(t && t.def && !t.def.solid) && !(x === state.player.x && y === state.player.y);
 }
 
+const DEFAULT_ROUND = "the game's default round (ticks are off, so this route is not your choice)";
+const ticksOn = () => (Number(state.world?.status?.tick_minutes) || 0) > 0;
+
 function setDoing(kind, why = "", extra = {}) {
   const now = performance.now();
   state.tally.doing = { kind, why, since: now, softUntil: now + SOFT_HOLD_MS, firmUntil: 0, ...extra };
@@ -262,7 +266,7 @@ function tallyHeld() {
   const now = performance.now();
   if (now > Math.max(d.softUntil || 0, d.firmUntil || 0)) {
     if (d.kind === "follow") log("Tally lets you go on alone.", "action");
-    setDoing("round", "back on the usual round");
+    setDoing("round", ticksOn() ? "your last choice ran out; staying put until you choose again" : DEFAULT_ROUND);
     return false;
   }
   return true;
@@ -313,7 +317,16 @@ function tallyTick() {
     }
     return;
   }
-  if (held || !posts.length || now < (t.waitUntil || 0)) return;
+  // A small round Tally planned at the last tick: on to the next place once the dwell is over.
+  if (t.plan?.length && now >= (t.waitUntil || 0) && !((t.doing?.firmUntil || 0) > now)) {
+    const next = t.plan.shift();
+    if (sendTally(next.at, next.name, next.room, next.why || "the next stop on the round you planned", 0, true)) {
+      if (t.path.length) log(`Tally moves on, ${next.name}.`, "action");
+    }
+    return;
+  }
+  // With ticks on, every move is Tally's own choice: no scripted round.
+  if (held || ticksOn() || !posts.length || now < (t.waitUntil || 0)) return;
   const choices = posts.filter((p) => p !== t.post);
   // the desk is home: come back to it more often than anywhere else
   const goal = Math.random() < 0.4 && t.post !== posts[0] ? posts[0] : choices[Math.floor(Math.random() * choices.length)];
@@ -321,7 +334,7 @@ function tallyTick() {
   if (path === null) { t.waitUntil = now + 5000; return; }
   t.goal = goal;
   t.path = path;
-  t.doing.why = `on the usual round, ${roomOf(goal) ? `looking in on ${roomOf(goal).name}` : "looking about"}`;
+  t.doing.why = DEFAULT_ROUND;
 }
 
 // Walking with Kristian: stay a step or two behind him.
@@ -338,8 +351,9 @@ function followStep() {
 }
 
 // Send Tally to a place: from a reply's go_to, a tick, or the bell.
-function sendTally(at, name, room, why, firmMs = 0) {
+function sendTally(at, name, room, why, firmMs = 0, keepPlan = false) {
   const t = state.tally;
+  if (!keepPlan) t.plan = []; // a new choice replaces the rest of an old round
   const path = bfs([t.x, t.y], [at], tallyFree);
   if (path === null) { log(`Tally can't find a way ${name}.`, "action"); return false; }
   setDoing("go", why, { name, firmUntil: firmMs ? performance.now() + firmMs : 0 });
@@ -357,14 +371,18 @@ function applyIntent(ev) {
     if (sendTally(ev.at, ev.name, ev.room, ev.why, firm) && t.path.length) log(`Tally sets off, ${ev.name}.`, "action");
   } else if (ev.kind === "stay") {
     t.path = null;
+    t.plan = [];
     setDoing("stay", ev.why, { firmUntil: firm ? performance.now() + firm : 0 });
   } else if (ev.kind === "follow") {
     t.path = null;
+    t.plan = [];
     setDoing("follow", ev.why, { firmUntil: firm ? performance.now() + firm : 0 });
     log("Tally falls in beside you.", "action");
   } else if (ev.kind === "free") {
-    setDoing("round", "free to wander");
+    t.plan = [];
+    setDoing("round", ticksOn() ? "free to choose again; you will decide where to go in a moment" : DEFAULT_ROUND);
     t.waitUntil = performance.now() + 20000;
+    if (ticksOn()) setTimeout(tallyChooses, 20000); // choose soon, rather than at the next regular tick
   }
 }
 
@@ -374,7 +392,8 @@ function doingText() {
   if (d.kind === "follow") return "walking with Kristian";
   if (d.kind === "go") return t.path?.length ? `on your way ${d.name}` : `staying ${d.name}`;
   if (d.kind === "stay") return "staying here, as you chose";
-  return t.path?.length ? "walking on your usual round" : "pausing on your usual round";
+  if (ticksOn()) return "staying put; you have not chosen anywhere new yet";
+  return t.path?.length ? "walked by the game's default round" : "paused on the game's default round";
 }
 
 function promiseText() {
@@ -447,15 +466,19 @@ async function tallyChooses() {
     const line = logLine(mine === theirs ? "Tally" : `Tally (in ${theirs ? theirs.name : "the vault"})`, "tally");
     line.textContent = res.say;
   }
+  const plan = Array.isArray(res.plan) ? res.plan : [];
   if (res.go === "stay" || !res.at) {
     // keep doing what Tally was doing, renewed until the next tick
     const d = t.doing;
     if (!d || d.kind === "round") setDoing("stay", res.why || "chose to stay a while");
     else { d.softUntil = performance.now() + SOFT_HOLD_MS; if (res.why) d.why = res.why; }
+    t.plan = plan;
+    if (plan.length) t.waitUntil = performance.now() + (60 + Math.random() * 60) * 1000;
     return;
   }
-  if (res.at[0] === t.x && res.at[1] === t.y) { setDoing("go", res.why, { name: res.name }); return; }
+  if (res.at[0] === t.x && res.at[1] === t.y) { setDoing("go", res.why, { name: res.name }); t.plan = plan; return; }
   if (sendTally(res.at, res.name, res.room, res.why || "") && !res.say) log(`Tally sets off, ${res.name}.`, "action");
+  t.plan = plan;
 }
 
 // The bell at the front of the Entrance Hall: Tally comes to you, wherever they are.
@@ -714,12 +737,15 @@ async function boot() {
   setInterval(stepAlongPath, 120);
   state.tally.post = (w.tally_posts || [])[0];
   state.tally.waitUntil = performance.now() + 30000; // at the desk when you arrive
-  setDoing("round", "at the desk, keeping the ledger");
+  setDoing("round", "the game opened with you at your desk; you have not chosen anywhere yet");
   setInterval(tallyTick, TALLY_STEP_MS);
   state.bootedAt = performance.now();
   canvas.addEventListener("pointerdown", touched);
   const tickMin = Number(w.status.tick_minutes) || 0;
-  if (tickMin > 0) setInterval(tallyChooses, tickMin * 60000);
+  if (tickMin > 0) {
+    setInterval(tallyChooses, tickMin * 60000);
+    setTimeout(tallyChooses, 60000); // a first choice of their own soon after you arrive
+  }
   window.vault = { state, renderers, portraits, tallyChooses, applyIntent, ringBell, reloadWorld }; // handy from the browser console
 
   const st = w.status;
