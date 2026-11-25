@@ -143,6 +143,7 @@ class Errands:
             raise ErrandError(f"unknown errand kind {kind!r}")
         rec = {"id": op["id"], "kind": kind, "title": op.get("title", ""), "brief": op.get("brief", ""),
                "spend_usd": float(op.get("spend_usd") or 0), "status": "running", "approved": _now(),
+               "self_started": bool(op.get("self_started")),
                "log": str(self.dir / f"{op['id']}.log")}
         cwd = self._workdir(rec)
         cmd = self.command(rec)

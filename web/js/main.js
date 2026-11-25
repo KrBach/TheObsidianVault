@@ -599,6 +599,7 @@ async function tallyChooses() {
   }
   if (!res || state.busy || state.talking) return;
   const mine = roomAt(state.player.x, state.player.y), theirs = roomAt(t.x, t.y);
+  if (res.thinking) log(`Tally goes quiet for a moment, turning something over: ${res.thinking}. A runner sets off with the question; you will hear what came of it.`, "action");
   if (res.say) {
     const line = logLine(mine === theirs ? "Tally" : `Tally (in ${theirs ? theirs.name : "the vault"})`, "tally");
     line.textContent = res.say;

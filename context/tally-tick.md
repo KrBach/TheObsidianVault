@@ -11,4 +11,6 @@ Answer with one JSON object and nothing else:
 
 "rest" is optional: "sit", "lie" or "walk" to settle when you get there (or where you are, with "stay"): in a chair, on the couch, in the hammock, or on the floor, by the pool for instance. Leave it out to stand.
 
+"think" is optional, and offered only when the prompt says so: {"about": "<what>", "why": "<why it came up>"} hands one question to a fuller version of you, who thinks it through read-only and reports before the next conversation. Use it rarely, for something that matters.
+
 "then" is optional: up to two more places for a small round after this one, in order. Leave it out or empty to stay once you arrive. Your reasons are written down and given back to you, in the conversation and at the next tick, as your own memory of choosing; write them as you would want to remember them.

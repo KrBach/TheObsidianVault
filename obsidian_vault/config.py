@@ -37,6 +37,7 @@ class Config:
     config_path: Path | None = None
     tick_minutes: float = 6.0
     tick_model: str = "haiku"
+    thoughts_per_day: int = 3  # think-harder handoffs a tick may start on its own (0: off)
     work_dir: Path | None = None  # the Work vault: read-only from the game
     web: bool = True  # WebSearch and WebFetch (read-only lookups)
     # Errands: bigger jobs Tally queues in the ledger; approving one starts a separate Claude Code run.
@@ -122,6 +123,7 @@ def load_config(path: Path | None = None) -> Config:
         config_path=path.resolve() if path.exists() else None,
         tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),
         tick_model=str(tally.get("tick_model", "haiku")),
+        thoughts_per_day=int(tally.get("thoughts_per_day", 3)),
         web=bool(brain.get("web", True)),
     )
     errands = data.get("errands", {})
