@@ -2,7 +2,7 @@
 
 This guide is for anyone who wants a setup like this one: an AI assistant with one stable identity that you can reach from Claude Code, the Claude apps and a small game where you walk into your notes and talk to it.
 
-The repo is one person's working setup, shared as an example. The assistant is called **Tally** and the owner is called **Kristian** throughout. You can keep the names while you try it out, and rename them later (see [Make it yours](#7-make-it-yours)).
+The repo started as one person's working setup and is shared as an example. Nothing personal is in the code: you set your own name, your companion's name (default **Tally**) and your portrait in `config.toml` (see [Make it yours](#7-make-it-yours)).
 
 All paths, names and folder names below are placeholders. Replace them with your own.
 
@@ -116,8 +116,14 @@ cp config.example.toml config.toml
 Edit `config.toml`. The important lines:
 
 ```toml
+[names]
+owner = "Robin"                   # your name, as the game and the companion use it
+companion = "Tally"               # your companion's name
+owner_portrait = ""               # optional: an image under web/, e.g. "portraits/me.jpg"
+
 [tally]
 core_dir = "~/Vaults/Private"     # the folder with bootstrap.md and soul.md
+timezone = "Europe/Berlin"        # for log timestamps; empty = this computer's
 work_dir = ""                     # optional second vault, read-only (e.g. work notes)
 
 [brain]
@@ -173,15 +179,10 @@ Review an errand's branch and merge it yourself on GitHub. The `[errands]` secti
 
 ## 7. Make it yours
 
-The game is written for one person, so the names are in the text. To rename:
-
-- **The owner:** find every mention with `grep -rn "Kristian" web world context obsidian_vault`. The main places:
-  - `world/tiles.json` (the player's name and portrait)
-  - `web/index.html` (the login card)
-  - the `context/` files (what the assistant is told)
-- **Portraits:** put your images in `web/portraits/` and point `world/tiles.json` at them.
-- **The assistant:** its name and personality come from your `soul.md`. "Tally" also appears in the game's text, the same way as the owner's name.
-- **The map:** `world/vault.json` is the layout. Run `python3 -m obsidian_vault.check_map` after editing it. The assistant can also move furniture and name places itself, and those changes live in `.vault-state/world.json`.
+- **Names:** open the menu in the game (Esc) and choose **Character** to set your name, your companion's name, a portrait, the time zone and your password. You can also set `[names] owner` and `companion` in `config.toml`; what you set in the game wins. The code and the context files never name anyone. They say OWNER where your name goes and Tally where the companion's does, and the game fills in your names everywhere: on screen, in the login card, in what the companion is told, in tool texts, in the short check-ins and in errand briefs. Your companion's character itself comes from your `soul.md`.
+- **Portrait:** put an image in `web/portraits/` and set `[names] owner_portrait = "portraits/<file>"`. The companion's portrait and animations are set in `world/tiles.json` under `creatures.tally`.
+- **The map:** `world/vault.json` is the layout. Run `python3 -m obsidian_vault.check_map` after editing it. The companion can also move furniture and name places itself, and those changes live in `.vault-state/world.json`.
+- **The rules for the game:** `context/the-vault-game.md` (talking in the game), `context/tally-tick.md` (the short check-ins between conversations) and `context/tally-guest.md` (the public version for guests). Edit them freely, and keep writing OWNER where your name should go.
 
 ## 8. Check that it works
 

@@ -45,6 +45,7 @@
               <button type="button" class="menu-btn" id="m-new">New conversation with Tally (n)</button>
               <button type="button" class="menu-btn" id="m-board">Notice board (b)</button>
               <button type="button" class="menu-btn" id="m-ledger">Ledger (p)</button>
+              <button type="button" class="menu-btn" id="m-character">Character: names, portrait, time zone, password</button>
               <button type="button" class="menu-btn" id="m-logout">Leave the vault (log out)</button>
               <div class="label">THE VAULT</div>
               <div id="menu-status" class="dim small"></div>
@@ -63,6 +64,28 @@
               <div><b>bell</b> in the hall: ring it to call Tally</div>
             </div>
           </div>
+        </div>
+        <div id="character" class="pop" hidden>
+          <div class="review-head"><span>CHARACTER</span><button type="button" class="pop-close" id="character-close" title="Close (Esc)">×</button></div>
+          <form id="character-form" class="char-body">
+            <div class="char-portrait">
+              <img id="char-img" alt="" hidden><span class="guest-art" id="char-art">✦</span>
+              <label class="menu-btn char-file">Choose a portrait…<input type="file" id="char-file" accept="image/png,image/jpeg,image/webp" hidden></label>
+              <button type="button" class="link-btn" id="char-remove">use the painted stand-in</button>
+            </div>
+            <div class="char-fields">
+              <label>Your name<input id="char-owner" maxlength="40" autocomplete="off"></label>
+              <label>Your companion's name<input id="char-companion" maxlength="40" autocomplete="off"></label>
+              <label>Time zone, for log timestamps<input id="char-tz" list="char-tz-list" placeholder="this computer's" autocomplete="off"></label>
+              <datalist id="char-tz-list"></datalist>
+              <div class="label">CHANGE PASSWORD (optional)</div>
+              <input id="char-old" type="password" placeholder="current password" autocomplete="current-password">
+              <input id="char-new" type="password" placeholder="new password" autocomplete="new-password">
+              <input id="char-new2" type="password" placeholder="new password again" autocomplete="new-password">
+              <div class="dim small">Saved in this game's settings (.vault-state), never in the repo. config.toml is left as it is; these win over it.</div>
+              <div class="review-foot"><span id="char-msg" class="warn"></span><button type="submit" class="primary">Save</button></div>
+            </div>
+          </form>
         </div>
         <div id="review" hidden>
           <div class="review-head"><span id="review-title"></span><button type="button" id="review-close" title="Close (Esc)">×</button></div>
@@ -85,7 +108,7 @@
         <figure class="portrait" id="portrait-player"><div class="art"></div><figcaption class="name"></figcaption></figure>
       </div>
       <form id="talk" hidden>
-        <span class="prompt" id="talk-prompt">Kristian&gt;</span>
+        <span class="prompt" id="talk-prompt">OWNER&gt;</span>
         <input id="say" autocomplete="off" spellcheck="true" placeholder="Say something to Tally (Esc to step away)">
         <button type="button" id="enlarge" title="Enlarge the talk box for long answers (e when not talking)">⤢</button>
       </form>
@@ -96,7 +119,7 @@
       <div class="title">THE OBSIDIAN VAULT</div>
       <div class="dim">Who comes to the door?</div>
       <div class="login-cards">
-        <button type="button" class="login-card" id="login-kristian"><img src="portraits/kristian.jpg" alt=""><span>Kristian</span></button>
+        <button type="button" class="login-card" id="login-owner"><img id="login-owner-img" alt="" hidden><span class="guest-art" id="login-owner-art">✦</span><span>OWNER</span></button>
         <button type="button" class="login-card" id="login-guest"><span class="guest-art">?</span><span>Guest</span></button>
       </div>
       <form id="login-form" hidden>

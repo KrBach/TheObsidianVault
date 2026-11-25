@@ -106,11 +106,12 @@ class TickTest(unittest.TestCase):
 
     def test_talk_choices_and_old_entries(self):
         cfg = Cfg()
-        log = MoveLog(cfg.state_dir)
+        from obsidian_vault.names import fill
+        log = MoveLog(cfg.state_dir, fill=lambda t: fill(t, "Robin", "Tally"))
         log.add("talk", "settle", "by the still pool", "rest my feet", how="sit", item="floor")
-        self.assertIn("you chose to sit down on the floor, by the still pool", log.for_prompt())
+        self.assertIn("in a conversation with Robin: you chose to sit down on the floor, by the still pool", log.for_prompt())
         log.add("talk", "stay", "", "we are talking")
-        self.assertIn("in a conversation with Kristian: you chose to stay where you were", log.for_prompt())
+        self.assertIn("in a conversation with Robin: you chose to stay where you were", log.for_prompt())
         old = json.dumps({"time": time.time() - 2 * 86400, "source": "tick", "kind": "go", "place": "x"})
         with open(log.path, "a", encoding="utf-8") as f:
             f.write(old + "\n")

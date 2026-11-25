@@ -1,4 +1,4 @@
-"""Tally's brain: something that turns Kristian's words into a streamed reply.
+"""Tally's brain: something that turns OWNER's words into a streamed reply.
 
 Every brain yields small event dicts the browser understands:
   {"type": "delta",  "text": "..."}   part of Tally's reply
@@ -40,7 +40,7 @@ TOOL_FLAVOUR = {
     "WebFetch": "Tally sends for a page from outside the vault",
     "mcp__vault__go_to": "Tally marks a place on the map",
     "mcp__vault__stay_here": "Tally settles in",
-    "mcp__vault__walk_with_kristian": "Tally tucks the ledger under one arm, ready to walk",
+    "mcp__vault__walk_with_owner": "Tally tucks the ledger under one arm, ready to walk",
     "mcp__vault__wander": "Tally shrugs off the last promise",
     "mcp__vault__settle": "Tally looks for somewhere to settle",
     "mcp__vault__look_at_map": "Tally unrolls the plan of the vault",
@@ -70,7 +70,7 @@ WEB_TOOLS = ["WebSearch", "WebFetch"]
 GAME_TOOLS = [
     "mcp__vault__go_to",
     "mcp__vault__stay_here",
-    "mcp__vault__walk_with_kristian",
+    "mcp__vault__walk_with_owner",
     "mcp__vault__wander",
     "mcp__vault__settle",
     "mcp__vault__look_at_map",
@@ -221,7 +221,7 @@ class ClaudeCodeBrain(Brain):
                 if ev.get("type") == "content_block_start":
                     block = ev.get("content_block", {})
                     if block.get("type") == "tool_use":
-                        yield {"type": "action", "text": TOOL_FLAVOUR.get(block.get("name"), f"Tally uses {block.get('name')}")}
+                        yield {"type": "action", "text": self.cfg.fill(TOOL_FLAVOUR.get(block.get("name"), f"Tally uses {block.get('name')}"))}
                     elif block.get("type") == "text" and got_text:
                         yield {"type": "delta", "text": "\n\n"}
                 elif ev.get("type") == "content_block_delta":

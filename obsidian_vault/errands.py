@@ -1,7 +1,7 @@
 """Errands: bigger jobs Tally queues in the ledger, run by a separate Claude Code session once approved.
 
 The talk session stays small and read-only. When something needs more (a data check, a change to
-the game, research that takes a while), Tally writes a brief with propose_errand. Kristian approves
+the game, research that takes a while), Tally writes a brief with propose_errand. OWNER approves
 it at the desk, and only then does the game start `claude -p` for it, with the tools that kind of
 errand needs and nothing else. The result comes back as a report Tally hears about on the next turn
 and that the notice board shows.
@@ -10,9 +10,9 @@ Kinds:
   research  read the vaults and the web, write nothing; the report is the result
   code      change the game in its own git worktree and branch (never the copy that is running),
             run the tests, commit, and push that one branch; never main, never a merge
-  session   a full session with Kristian's own Claude Code setup (skills, connectors, browser), in
-            the vault folder, for things like the Arknights data check; tools that spend art
-            credits are blocked unless the brief carries a spending limit he approved
+  session   a full session with OWNER's own Claude Code setup (skills, connectors, browser), in
+            the vault folder, for things like a data check with your own skills; tools that spend art
+            credits are blocked unless the brief carries a spending limit the owner approved
 
 Records live in <state_dir>/errands/<id>.json; the full output in <id>.log.
 """
@@ -30,7 +30,7 @@ from .persona import load_core
 
 KINDS = ("research", "code", "session")
 
-# Tools that spend Kristian's art credits, under the names connectors get in Claude Code.
+# Tools that spend the owner's art credits, under the names connectors get in Claude Code.
 _SPRITEFORGE = ["generate"]
 _RECRAFT = ["generate_image", "image_to_image", "image_edit", "inpaint_image", "variate_image",
             "creative_upscale", "crisp_upscale", "generate_background", "replace_background",
@@ -43,10 +43,10 @@ COST_TOOLS = [f"{prefix}{tool}"
 
 ERRAND_RULES = """# Errand
 
-You are Tally, on an errand Kristian approved in The Obsidian Vault game. The brief below is the
+You are Tally, on an errand OWNER approved in The Obsidian Vault game. The brief below is the
 whole task: do it, and nothing beyond it. You run unattended, so nobody can answer a question. Where
 the brief is unclear, take the most likely reading and say which one you took in the report. If the
-errand cannot be done safely or needs his decision, stop and say so in the report instead of guessing.
+errand cannot be done safely or needs OWNER's decision, stop and say so in the report instead of guessing.
 
 The session-start steps in bootstrap.md were done for you: skip them. Do not write to soul.md; the
 Tally in the game logs what matters when it hears your report. Your core rules still hold: check your
@@ -54,7 +54,7 @@ work against the files before you call it done, say what you could not verify, a
 at once in the report.
 
 End with a short report in plain Markdown (no tables): what you did, what you checked and how, what is
-left, and anything that needs his decision. Put any link or branch name he needs in it.
+left, and anything that needs OWNER's decision. Put any link or branch name OWNER needs in it.
 """
 
 KIND_RULES = {
@@ -65,8 +65,8 @@ KIND_RULES = {
             "README's conventions, run `python3 -m unittest discover -s tests`, and commit with a clear "
             "message. Then push this branch only, with `git push -u origin {branch}`. Never push to main or "
             "merge anything. If the push fails, say so; the commits stay on the branch.",
-    "session": "Kind: session. You have Kristian's own Claude Code setup in the Private vault folder: his skills, "
-               "his connectors and the browser, and you may edit notes as a normal session would, following "
+    "session": "Kind: session. You have OWNER's own Claude Code setup in the Private vault folder: OWNER's skills, "
+               "connectors and the browser, and you may edit notes as a normal session would, following "
                "bootstrap.md and the notes skill (load the skill named in the brief first, if there is one). "
                "{spend}",
 }
@@ -131,7 +131,7 @@ class Errands:
     # ---------- starting ----------
 
     def start(self, op: dict) -> str:
-        """Start an approved errand (an op from the ledger). Returns a line for Kristian."""
+        """Start an approved errand (an op from the ledger). Returns a line for OWNER."""
         if not self.cfg.errands:
             raise ErrandError("errands are switched off ([errands] enabled = false in config.toml)")
         if not self.cfg.claude_path:
@@ -172,14 +172,14 @@ class Errands:
     def system_prompt(self, rec: dict) -> str:
         core, _, _ = load_core(self.cfg)
         if rec["spend_usd"] > 0:
-            spend = (f"Kristian approved spending up to ${rec['spend_usd']:.2f} of his art credits on this errand. "
+            spend = (f"OWNER approved spending up to ${rec['spend_usd']:.2f} of OWNER's art credits on this errand. "
                      "Quote before each generation and stop before the total would pass that.")
         else:
-            spend = ("Tools that spend his art credits are blocked. If the errand needs one, get a quote, "
-                     "put it in the report and stop, so he can approve the spend as a new errand.")
+            spend = ("Tools that spend OWNER's art credits are blocked. If the errand needs one, get a quote, "
+                     "put it in the report and stop, so OWNER can approve the spend as a new errand.")
         rules = KIND_RULES[rec["kind"]].format(branch=rec.get("branch", ""), spend=spend)
-        return (f"# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n{core}\n\n"
-                f"{ERRAND_RULES}\n{rules}\n")
+        return (self.cfg.fill("# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n")
+                + f"{core}\n\n" + self.cfg.fill(f"{ERRAND_RULES}\n{rules}\n"))
 
     def command(self, rec: dict) -> list[str]:
         cfg = self.cfg
@@ -202,7 +202,7 @@ class Errands:
             cmd += ["--tools", "Read,Glob,Grep,Edit,Write,Bash", "--allowedTools", ",".join(allowed),
                     "--disallowedTools", "Bash(git push --force:*),Bash(git push -f:*),Bash(git merge:*),Bash(git rebase:*)",
                     "--permission-mode", "acceptEdits", "--strict-mcp-config"]
-        else:  # session: Kristian's own setup
+        else:  # session: the owner's own setup
             cmd += ["--allowedTools", ",".join(cfg.errand_session_tools), "--permission-mode", "acceptEdits"]
             if rec["spend_usd"] <= 0:
                 cmd += ["--disallowedTools", ",".join(COST_TOOLS)]

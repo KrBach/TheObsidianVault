@@ -28,16 +28,18 @@ python3 -m obsidian_vault
 
 It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so your vault path stays local.
 
+Set your name in the game (menu, Esc → **Character**: your name, your companion's name, a portrait upload, the time zone and your password), or by hand in `config.toml` under `[names]`: `owner` (you), `companion` (default Tally) and optionally `owner_portrait`. What you set in the game is kept in `.vault-state/settings.json` and wins over `config.toml`, which the game never rewrites. The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. Set `[tally] timezone` (for example `"Europe/Berlin"`) for log timestamps; it defaults to this computer's.
+
 ### Logging in
 
-The game opens at the door: come in as **Kristian** or as a **guest**.
+The game opens at the door: come in as the owner (the name in `[names] owner`) or as a **guest**.
 
-- **Kristian's password:** the first time, the door asks Kristian to choose one. Only a salted hash (PBKDF2) is kept, in `.vault-state/login.json`, never the password itself. To change it, run `python3 -m obsidian_vault.auth set-password`. This also logs everyone out.
+- **The owner's password:** the first time, the door asks the owner to choose one. Only a salted hash (PBKDF2) is kept, in `.vault-state/login.json`, never the password itself. To change it, run `python3 -m obsidian_vault.auth set-password`. This also logs everyone out.
 - **Staying logged in:** a login lasts 30 days in that browser, across restarts of the game. Use "Leave the vault" in the menu (Esc) to log out.
 - **A guest** can walk around, use the furniture, ring the bell and talk to Tally. Tally treats them as a visitor:
   - **Tally for a guest** has no private core (no `soul.md`, no `bootstrap.md`). It has only the public description in `context/tally-guest.md`, no tools at all (no notes, no web, no vault or game tools) and a conversation of its own. It runs in a scratch folder outside the vault.
   - **Closed to guests:** the ledger, the notice board and errands. Shelf labels show only as "a closed shelf", without theme names or note counts. Tally's reasons for being where they are stay hidden too.
-  - **What a guest leaves behind:** nothing. A guest's visit does not move Tally for Kristian's next session, does not run Tally's ticks, and is not written to the moves journal or the vault.
+  - **What a guest leaves behind:** nothing. A guest's visit does not move Tally for the owner's next session, does not run Tally's ticks, and is not written to the moves journal or the vault.
 - **Who can reach the game:** it only listens on this machine (`127.0.0.1`), so a guest has to sit at your computer.
 
 ### Tally's brain
@@ -53,7 +55,7 @@ Set `brain.kind` in `config.toml`:
 
 With the Claude Code brain, Tally gets a few vault tools from a small built-in MCP server (`obsidian_vault/vault_mcp.py`, no packages needed). They follow the rules in your `bootstrap.md`:
 
-- **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (Europe/Copenhagen) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
+- **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (in `[tally] timezone`) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
 - **add_coaching_item**: one new line under "For the coaching thread" in `soul.md`.
 - **log_failure**: one new numbered entry in `agent-failure-log.md` (Tally's own file, written like `soul.md`), as the failure-log loop in `soul.md` asks.
 - **propose_edit**: replace one exact passage in a note in a theme folder.
@@ -80,11 +82,11 @@ The conversation itself stays small and read-only. Bigger jobs go out as **erran
 
 - **research**: reads the vaults and the web; writes nothing. The report is the result.
 - **code**: changes this game in its own git worktree on a branch `errand/<id>` (never the copy you are running), runs the tests, commits and pushes that one branch. It may not push anywhere else, merge, rebase or force-push. You review it as a pull request.
-- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like the Arknights data check. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt.
+- **session**: your own Claude Code setup (skills, connectors, browser) in the vault folder, with edits auto-accepted there, for things like a regular data check with your own skills. Tools that spend art credits (SpriteForge, Recraft) are blocked unless the brief carries a spending limit you approved (`spend_usd`, shown in the ledger). Which tools it may use without asking is `[errands] session_tools`; anything else is refused, since nobody is there to answer a prompt.
 
 For large tasks Tally holds a short **meeting** first (goal, what done looks like, limits, cost) and reads the brief back before queuing it. You can call one yourself, for example at the map table.
 
-The **notice board** (`b`, or the board button in the top bar) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as the claude.ai artifact for the Arknights dashboard. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
+The **notice board** (`b`, or the board button in the top bar) shows errand reports, the files in the vault's `Claude outputs` folder (Markdown, images, HTML pages in a sandboxed frame) and links Tally pins with `pin_to_board`, such as a claude.ai artifact. Files are served only from the folders in `[board] folders`. Errand records and logs are in `.vault-state/errands/`.
 
 ## Furniture: sitting, lying down, walking in place
 
@@ -123,7 +125,7 @@ Underneath both is an invisible tile grid. It handles walking, clicking, depth o
 - **Sprites of any size.** Give a tile or creature `"iso": {"sprite": "sprites/tally.png"}`. The sprite's anchor (by default its bottom centre, the feet) is placed on the tile. Set `anchor: [x, y]` (in pixels inside the image) to move that point, and `scale` to resize. A tall shelf or a big character just reaches higher up the screen. Things are drawn back to front by grid position, so you can walk behind them.
 - **Painted backdrops.** Add `backdrops` to [world/vault.json](world/vault.json): `{"image": "backdrops/hearth.png", "cells": [18, 0, 17, 9], "at": [-320, -120]}`. Inside `cells`, tiles marked `painted` (floors, walls) aren't drawn, and the image shows instead. `at` is where the image's top-left corner goes, in pixels from the centre of tile 0,0. Props and characters stay separate sprites on top.
 - **Placeholders.** Until a sprite exists, the `iso` block draws a lit placeholder shape (`shape`, `h`, `f`, `color`). Anything with a `light` gives off light.
-- **Portraits.** While you talk, the talk box shows Tally's and Kristian's portraits, and the speaker's lights up. Set `creatures.tally.portrait.image` (and `player`) to an image of any size; it is fitted to the 120×150 frame (portrait 4:5 works best). Until then a placeholder bust is drawn. Add `videos` (mp4 or webm, muted and looping) per state, e.g. `"videos": {"thinking": ["portraits/think.mp4"], "speaking": ["portraits/talk-1.mp4", "portraits/talk-2.mp4"]}`; several clips for one state take turns, and the still shows the rest of the time. Clips cross-fade in and out over the still. To make a clip loop without a visible jump (and shrink it), run `python3 -m obsidian_vault.loop_clip in.mp4 web/portraits/tally-think.mp4`; it needs ffmpeg and reports how different the first and last frames were before and after. Set `pixelated: true` for pixel-art portraits.
+- **Portraits.** While you talk, the talk box shows Tally's and the owner's portraits, and the speaker's lights up. Set `creatures.tally.portrait.image` (and `[names] owner_portrait` for yours) to an image of any size; it is fitted to the 120×150 frame (portrait 4:5 works best). Until then a placeholder bust is drawn. Add `videos` (mp4 or webm, muted and looping) per state, e.g. `"videos": {"thinking": ["portraits/think.mp4"], "speaking": ["portraits/talk-1.mp4", "portraits/talk-2.mp4"]}`; several clips for one state take turns, and the still shows the rest of the time. Clips cross-fade in and out over the still. To make a clip loop without a visible jump (and shrink it), run `python3 -m obsidian_vault.loop_clip in.mp4 web/portraits/tally-think.mp4`; it needs ffmpeg and reports how different the first and last frames were before and after. Set `pixelated: true` for pixel-art portraits.
 - **Animations.** Tally has animation slots for two states: `thinking` (working on a reply, or reading notes) and `speaking` (the words are arriving). Fill `creatures.tally.iso.states.thinking` (map) or `creatures.tally.portrait.states.thinking` (talk box) with `"frames": ["sprites/tally-think-1.png", ...]` or a sprite sheet in a row (`"sheet": "sprites/tally-think.png", "frame": [96, 128], "count": 8`), plus `fps`. Until then a placeholder plays: the eyes in Tally's hood brighten and pulse and ink motes drift up; in the portrait the eyes drift as if reading.
 - **ASCII sprites.** The ASCII view takes `sprite` (a cell on `sprites.sheet`, or an image path) the same way.
 
@@ -137,7 +139,7 @@ Tally always knows where they are and why. What they say and where they go are t
 
 Tally remembers their own moves. Every choice of where to be, from a tick or from the game tools in a conversation, is written to `.vault-state/moves.jsonl` in Tally's own words (where, why, anything said, and any small round planned with `then`). The last few are handed back to the conversation and to the next tick as Tally's own decisions, so Tally can say why they went somewhere. With ticks on there is no scripted round: Tally only moves where they chose, and stays put otherwise. With ticks off the old round between `tally_posts` still runs, and Tally is told it is the game's route, not theirs.
 
-Tally stays where they were between sessions. The game saves Tally's position, what they are doing and why, their pose and the rest of any planned round to `.vault-state/tally.json` (every few seconds when it changes, and when the tab closes). Next time the game opens, Tally is still there, lying on the couch or halfway to the map room. Walking with Kristian ends when he leaves. You always come in through the front door. Delete `tally.json` to have Tally start at the desk again.
+Tally stays where they were between sessions. The game saves Tally's position, what they are doing and why, their pose and the rest of any planned round to `.vault-state/tally.json` (every few seconds when it changes, and when the tab closes). Next time the game opens, Tally is still there, lying on the couch or halfway to the map room. Walking with the owner ends when they leave. You always come in through the front door. Delete `tally.json` to have Tally start at the desk again.
 
 ## Tally arranges the vault
 

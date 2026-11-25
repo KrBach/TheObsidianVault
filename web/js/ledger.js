@@ -1,5 +1,6 @@
-// The ledger: changes Tally wants to make to the vault, waiting for Kristian. A '!' in the top bar
-// shows when something waits; it opens the list over the map. Nothing is written until he approves.
+// The ledger: changes Tally wants to make to the vault, waiting for the owner. A '!' in the top bar
+// shows when something waits; it opens the list over the map. Nothing is written until the owner approves.
+import { fill } from "./names.js";
 
 const $ = (id) => document.getElementById(id);
 let items = [];
@@ -63,7 +64,7 @@ function show(id) {
   renderDiff($("review-diff"), op);
   $("review-approve").disabled = !!op.stale;
   $("review-approve").textContent = op.kind === "errand" ? "Approve and send" : "Approve and write";
-  $("review-msg").textContent = op.stale ? "This change no longer applies. Reject it and ask Tally again." : "";
+  $("review-msg").textContent = op.stale ? fill("This change no longer applies. Reject it and ask Tally again.") : "";
 }
 
 export function close() {

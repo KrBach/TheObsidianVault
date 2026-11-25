@@ -40,8 +40,10 @@ def _ago(seconds: float) -> str:
 
 
 class MoveLog:
-    def __init__(self, state_dir: Path):
+    def __init__(self, state_dir: Path, timezone: str = "", fill=None):
         self.path = Path(state_dir) / "moves.jsonl"
+        self.timezone = timezone
+        self.fill = fill or (lambda t: t)  # puts the configured names into the lines
 
     def add(self, source: str, kind: str, place: str = "", why: str = "", say: str = "",
             plan: list[dict] | None = None, room: str = "", how: str = "", item: str = "") -> dict:
@@ -74,26 +76,23 @@ class MoveLog:
         return out[-n:]
 
     @staticmethod
-    def line(rec: dict, now: float | None = None) -> str:
+    def line(rec: dict, now: float | None = None, tz: str = "") -> str:
         now = now or time.time()
-        try:
-            tz = ZoneInfo("Europe/Copenhagen") if ZoneInfo else None
-            clock = datetime.fromtimestamp(rec["time"], tz).strftime("%H:%M")
-        except Exception:  # no tz database on this machine
-            clock = datetime.fromtimestamp(rec["time"]).strftime("%H:%M")
+        from .names import local_now
+        clock = datetime.fromtimestamp(rec["time"], local_now(tz).tzinfo).strftime("%H:%M")
         where = rec.get("place") or "where you were"
-        how = "in a conversation with Kristian" if rec.get("source") == "talk" else "on your own, between conversations"
+        how = "in a conversation with OWNER" if rec.get("source") == "talk" else "on your own, between conversations"
         kind = rec.get("kind")
         if kind == "go":
             what = f"you chose to go to {where}"
         elif kind == "stay":
             what = f"you chose to stay {where}" if rec.get("place") else "you chose to stay where you were"
         elif kind == "follow":
-            what = "you chose to walk with Kristian"
+            what = "you chose to walk with OWNER"
         elif kind == "settle":
-            how = {"sit": "sit down", "lie": "lie down", "walk": "walk in place"}.get(rec.get("how", ""), "settle")
+            pose = {"sit": "sit down", "lie": "lie down", "walk": "walk in place"}.get(rec.get("how", ""), "settle")
             on = " on the floor" if rec.get("item") == "floor" else (f" on a {rec['item']}" if rec.get("item") else "")
-            what = f"you chose to {how}{on}" + (f", {where}" if rec.get("place") else "")
+            what = f"you chose to {pose}{on}" + (f", {where}" if rec.get("place") else "")
         elif kind == "free":
             what = "you let go of your last plan, to choose again on your own"
         else:
@@ -113,4 +112,4 @@ class MoveLog:
         if not recs:
             return ""
         now = time.time()
-        return "\n".join(f"- {self.line(r, now)}" for r in recs)
+        return self.fill("\n".join(f"- {self.line(r, now, self.timezone)}" for r in recs))

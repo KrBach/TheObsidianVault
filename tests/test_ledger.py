@@ -34,7 +34,7 @@ Cold memory.
 
 ## Interaction log
 
-- 2026-11-01 10:00 (Europe/Copenhagen), Project: Test · Theme: Games: first.
+- 2026-11-01 10:00 (Europe/Berlin), Project: Test · Theme: Games: first.
 
 Related: [bootstrap.md](bootstrap.md)
 """
@@ -89,16 +89,16 @@ class LedgerTest(unittest.TestCase):
 
     def test_review_queues_then_approve_writes(self):
         led = self.ledger("review")
-        r = led.append_log("Games", "Kristian visited\nthe vault.", "games/chess.md")
+        r = led.append_log("Games", "Robin visited\nthe vault.", "games/chess.md")
         self.assertEqual(r.status, "queued")
         self.assertEqual(self.soul(), SOUL)
         [op] = led.pending()
         self.assertIn("+- ", op["diff"])
         led.approve(r.id)
         lines = self.soul().split("\n")
-        i = lines.index("- 2026-11-01 10:00 (Europe/Copenhagen), Project: Test · Theme: Games: first.")
+        i = lines.index("- 2026-11-01 10:00 (Europe/Berlin), Project: Test · Theme: Games: first.")
         new = lines[i + 1]
-        self.assertIn("Project: The Obsidian Vault · Theme: Games ([note](games/chess.md)): Kristian visited the vault.", new)
+        self.assertIn("Project: The Obsidian Vault · Theme: Games ([note](games/chess.md)): Robin visited the vault.", new)
         self.assertEqual(lines[i + 2:], ["", "Related: [bootstrap.md](bootstrap.md)", ""])
         self.assertEqual(led.pending(), [])
         self.assertEqual(len(list((self.state / "backups").iterdir())), 1)
@@ -134,11 +134,11 @@ class LedgerTest(unittest.TestCase):
     def test_failure_log_gets_the_next_number(self):
         (self.vault / "agent-failure-log.md").write_text(FAILURES, encoding="utf-8")
         led = self.ledger("review", soul_direct=True)
-        r = led.log_failure("2026-11-25", "Said X.", "Caught by Kristian.", "Check X.", "Unchecked-claim", "no (log only)")
+        r = led.log_failure("2026-11-25", "Said X.", "Caught by Robin.", "Check X.", "Unchecked-claim", "no (log only)")
         self.assertEqual(r.status, "applied")
         lines = (self.vault / "agent-failure-log.md").read_text(encoding="utf-8").split("\n")
         i = lines.index("2. **2026-10-02.** Second.")
-        self.assertEqual(lines[i + 1], "3. **2026-11-25.** Said X. · Caught by Kristian. · Check X. · "
+        self.assertEqual(lines[i + 1], "3. **2026-11-25.** Said X. · Caught by Robin. · Check X. · "
                                        "**Category:** unchecked-claim · **Operative fix:** no (log only)")
         self.assertEqual(lines[i + 2:i + 4], ["", "Taxonomy note."])
         self.assertIn("1. **Record.** Same session.", lines)  # the numbered list under the next heading is untouched

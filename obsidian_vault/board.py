@@ -3,7 +3,7 @@
 Three sources, all read-only from the game:
 - files in the vault folders named in [board] folders (default "Claude outputs"): Markdown, images, HTML;
 - errand reports (errands.py);
-- links Tally pins (pin_to_board), such as a claude.ai artifact like the Arknights dashboard.
+- links Tally pins (pin_to_board), such as a claude.ai artifact.
 
 Files are served only from inside those folders, by an id the board hands out, never by a path the
 browser chooses.

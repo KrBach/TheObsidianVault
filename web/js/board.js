@@ -2,6 +2,7 @@
 // Opens over the map with `b`. Pages run in a sandboxed frame, never as the game.
 
 import { renderMarkdown } from "./markdown.js";
+import { fill } from "./names.js";
 
 const $ = (id) => document.getElementById(id);
 let items = [];
@@ -29,7 +30,7 @@ function when(t) {
 function renderList() {
   const list = $("board-list");
   list.replaceChildren();
-  if (!items.length) list.append(el("div", "dim", "The board is bare. Errand reports, files in 'Claude outputs' and links Tally pins appear here."));
+  if (!items.length) list.append(el("div", "dim", fill("The board is bare. Errand reports, files in 'Claude outputs' and links Tally pins appear here.")));
   for (const it of items) {
     const row = el("button", "board-item");
     row.type = "button";

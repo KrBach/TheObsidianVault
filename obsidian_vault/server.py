@@ -10,6 +10,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from .auth import COOKIE, SESSION_DAYS, Auth, AuthError
 from .board import Board, BoardError
+from .character import CharacterError, portrait_file
+from . import character, ledger as ledger_mod
 from .brains import Brain, make_brain, make_guest_brain
 from .errands import Errands
 from .config import REPO_ROOT, Config, load_config
@@ -30,17 +32,25 @@ class Game:
         self.errands = Errands(cfg)
         self.board = Board(cfg)
         self.ledger = Ledger(cfg, on_errand=self.errands.start)
-        self.moves = MoveLog(cfg.state_dir)
+        self.moves = MoveLog(cfg.state_dir, cfg.timezone, cfg.fill)
         self.ticker = Ticker(cfg, self.brain)
         self.layout = World(cfg.state_dir)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
 
-    def world(self, role: str = "kristian") -> dict:
+    def world(self, role: str = "owner") -> dict:
         world = self.layout.load()  # the repo's map plus Tally's own changes
-        guest = role != "kristian"
+        guest = role != "owner"
         world["shelves"] = guest_shelves(self.cfg) if guest else vault_shelves(self.cfg)
         world["role"] = role
+        world["names"] = self.names()
+        cr = world.get("creatures", {})
+        if "player" in cr:
+            cr["player"] = {**cr["player"], "name": self.cfg.owner}
+            if self.cfg.owner_portrait:
+                cr["player"]["portrait"] = {**cr["player"].get("portrait", {}), "image": self.cfg.owner_portrait}
+        if "tally" in cr:
+            cr["tally"] = {**cr["tally"], "name": self.cfg.companion, "desc": self.cfg.fill(cr["tally"].get("desc", ""))}
         world["tally_saved"] = self.layout.tally()  # where Tally was when the game last closed
         world["status"] = {
             "brain": self.brain.name,
@@ -53,10 +63,22 @@ class Game:
         if guest:
             world["status"]["brain"] = self.guest_brain.name
             saved = world.get("tally_saved")
-            if saved:  # where Tally is, but not why: those reasons can be Kristian's business
+            if saved:  # where Tally is, but not why: those reasons can be the owner's business
                 saved["doing"] = {**saved.get("doing", {}), "why": ""}
                 saved["plan"] = [{**p, "why": ""} for p in saved.get("plan", [])]
         return world
+
+
+    def apply_character(self) -> None:
+        """New names or time zone from the Character window: rebuild what was made with the old ones."""
+        self.persona = load_persona(self.cfg)
+        self.brain.persona = self.persona
+        self.guest_brain.persona = load_guest_persona(self.cfg)
+        ledger_mod._TZ = self.cfg.timezone
+        self.moves.timezone = self.cfg.timezone
+
+    def names(self) -> dict:
+        return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
 
 
 def make_handler(game: Game):
@@ -118,8 +140,8 @@ def make_handler(game: Game):
             self.end_headers()
             self.wfile.write(body)
 
-        # Guests may walk around and talk to Tally; Kristian's things stay his.
-        KRISTIAN_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally")
+        # Guests may walk around and talk to Tally; the owner's things stay theirs.
+        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -127,14 +149,20 @@ def make_handler(game: Game):
             if not role:
                 self._json({"error": "log in first"}, HTTPStatus.UNAUTHORIZED)
                 return None
-            if role != "kristian" and self.path.startswith(self.KRISTIAN_ONLY):
-                self._json({"error": "that is Kristian's"}, HTTPStatus.FORBIDDEN)
+            if role != "owner" and self.path.startswith(self.OWNER_ONLY):
+                self._json({"error": "that is the owner's"}, HTTPStatus.FORBIDDEN)
                 return None
             return role
 
         def do_GET(self):
             if self.path == "/api/login":
-                return self._json({"role": self._role(), "has_password": game.auth.has_password()})
+                return self._json({"role": self._role(), "has_password": game.auth.has_password(), "names": game.names()})
+            if self.path.split("?")[0] == "/" + character.PORTRAIT_URL:
+                # the owner's uploaded portrait: on the login card too, so before a login
+                p = portrait_file(game.cfg.state_dir)
+                if not p:
+                    return self._json({"error": "no portrait"}, HTTPStatus.NOT_FOUND)
+                return self._bytes(p.read_bytes(), {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[p.suffix[1:]])
             if not self.path.startswith("/api/"):
                 return super().do_GET()
             role = self._gate()
@@ -159,6 +187,9 @@ def make_handler(game: Game):
                                                for r in game.errands.all()[:20]]})
             if self.path == "/api/world":
                 return self._json(game.world(role))
+            if self.path == "/api/character":
+                return self._json({**game.names(), "timezone": game.cfg.timezone,
+                                   "uploaded": bool(portrait_file(game.cfg.state_dir))})
             if self.path == "/api/pending":
                 return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
                                    "size": game.ledger.size_report(for_tally=False)})
@@ -166,6 +197,8 @@ def make_handler(game: Game):
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
+            if length > 6 * 1024 * 1024:  # a portrait upload is the largest thing the game takes
+                return self._json({"error": "too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             try:
                 payload = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
@@ -187,7 +220,17 @@ def make_handler(game: Game):
             role = self._gate()
             if not role:
                 return
-            guest = role != "kristian"
+            guest = role != "owner"
+
+            if self.path == "/api/character":
+                try:
+                    if payload.get("new_password"):
+                        game.auth.change_password(str(payload.get("old_password", "")), str(payload["new_password"]))
+                    character.save(game.cfg, payload)
+                except (CharacterError, AuthError) as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+                game.apply_character()
+                return self._json({"ok": True, **game.names(), "timezone": game.cfg.timezone})
 
             if self.path == "/api/reset":
                 (game.guest_brain if guest else game.brain).reset()
@@ -233,7 +276,7 @@ def make_handler(game: Game):
                 return self._stream(game.guest_brain, f"<game_state>{where}</game_state>\n{text}" if where else text, guest=True)
             finished = game.errands.unreported()
             if finished:
-                news = "\n\n".join(game.errands.summary(r) for r in finished)
+                news = game.cfg.fill("\n\n".join(game.errands.summary(r) for r in finished))
                 text = f"<errands_finished>\n{news}\n</errands_finished>\n{text}"
             memory = game.moves.for_prompt(6)
             if memory:
@@ -279,6 +322,9 @@ def main() -> None:
     p = game.persona
     print("The Obsidian Vault")
     print(f"  brain: {game.brain.name}")
+    print(f"  names: {cfg.owner} (owner), {cfg.companion} (companion)")
+    if cfg.owner == "Owner":
+        print('  note: set your name in config.toml under [names] owner = "..."')
     if game.brain.name == "claude-code":
         if cfg.claude_path:
             print(f"  claude: {cfg.claude_path}")
@@ -286,7 +332,7 @@ def main() -> None:
             from .brains import CLAUDE_MISSING
             print(f"  WARNING: {CLAUDE_MISSING}")
     if p.ok:
-        print(f"  Tally's core: {', '.join(p.loaded)} from {cfg.core_dir}")
+        print(f"  {cfg.companion}'s core: {', '.join(p.loaded)} from {cfg.core_dir}")
     else:
         print(f"  WARNING: Tally's core is incomplete. Missing: {', '.join(p.missing)}")
         print("  Set tally.core_dir in config.toml (copy config.example.toml).")

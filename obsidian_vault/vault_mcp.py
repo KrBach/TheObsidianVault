@@ -32,9 +32,9 @@ TOOLS = [
         "name": "append_interaction_log",
         "description": (
             "Append one line to the Interaction log in soul.md, following bootstrap.md: how the interaction "
-            "went (decisions, corrections, rules, Kristian's reactions), not the work itself. The timestamp and "
+            "went (decisions, corrections, rules, OWNER's reactions), not the work itself. The timestamp and "
             "'Project: The Obsidian Vault · Theme: ...' prefix are added for you. At most one entry per session "
-            "and theme unless something changes how you should behave or he signals he is stopping."
+            "and theme unless something changes how you should behave or OWNER signals they are stopping."
         ),
         "inputSchema": _schema({
             "theme": {**S, "description": "The theme, e.g. 'Obsidian' or 'Games'."},
@@ -44,7 +44,7 @@ TOOLS = [
     },
     {
         "name": "add_coaching_item",
-        "description": "Add one line under 'For the coaching thread' in soul.md, for something worth discussing in the coaching thread. Mention it to Kristian at a natural pause.",
+        "description": "Add one line under 'For the coaching thread' in soul.md, for something worth discussing in the coaching thread. Mention it to OWNER at a natural pause.",
         "inputSchema": _schema({"item": {**S, "description": "One line, plain text."}}, ["item"]),
     },
     {
@@ -63,13 +63,13 @@ TOOLS = [
         "name": "log_failure",
         "description": (
             "Add a numbered entry to agent-failure-log.md, as the Failure log loop rule in soul.md asks: in the same "
-            "session as a correction from Kristian or a mistake you catch yourself. The file is yours, so it is "
+            "session as a correction from OWNER or a mistake you catch yourself. The file is yours, so it is "
             "written at once, with a backup. Write 'Repeat of N' in `what` when it repeats an earlier entry."
         ),
         "inputSchema": _schema({
             "date": {**S, "description": "When it happened, e.g. '2026-11-25'. Empty for today."},
             "what": {**S, "description": "What went wrong, one or two sentences."},
-            "caught": {**S, "description": "How it was caught, e.g. 'Caught by Kristian.'"},
+            "caught": {**S, "description": "How it was caught, e.g. 'Caught by OWNER.'"},
             "fix": {**S, "description": "The fix or rule."},
             "category": {**S, "description": "One of: source, ui-read, instruction, process, criterion, self-record, unchecked-claim."},
             "operative": {**S, "description": "Where the fix now lives and changes what you do, or 'no (log only)'."},
@@ -79,13 +79,13 @@ TOOLS = [
         "name": "propose_edit",
         "description": (
             "Propose replacing one exact passage in an existing note in a theme folder. `old` must occur exactly "
-            "once in the note. Kristian approves it in the game; it is applied only if the note has not changed."
+            "once in the note. OWNER approves it in the game; it is applied only if the note has not changed."
         ),
         "inputSchema": _schema({
             "path": {**S, "description": "Vault-relative path, e.g. 'games/arknights.md'."},
             "old": {**S, "description": "The exact text to replace."},
             "new": {**S, "description": "The replacement text."},
-            "reason": {**S, "description": "One line on why, shown to Kristian."},
+            "reason": {**S, "description": "One line on why, shown to OWNER."},
         }, ["path", "old", "new", "reason"]),
     },
     {
@@ -97,23 +97,23 @@ TOOLS = [
         "inputSchema": _schema({
             "path": {**S, "description": "Vault-relative path ending in .md, e.g. 'games/new-note.md'."},
             "content": {**S, "description": "The whole note, Markdown."},
-            "reason": {**S, "description": "One line on why, shown to Kristian."},
+            "reason": {**S, "description": "One line on why, shown to OWNER."},
         }, ["path", "content", "reason"]),
     },
     {
         "name": "propose_errand",
         "description": (
-            "Queue a bigger job at the desk as an errand. Nothing runs until Kristian approves it; then a separate "
+            "Queue a bigger job at the desk as an errand. Nothing runs until OWNER approves it; then a separate "
             "Claude Code session does it and you hear the report on a later turn. Kinds: 'research' (read the vaults "
             "and the web, write nothing), 'code' (change the game on its own branch, run the tests, push that branch), "
-            "'session' (his full setup: skills, connectors, browser, vault edits; e.g. the Arknights data check). "
-            "For large tasks, agree the brief with him first (a short meeting), then read it back in one line."
+            "'session' (OWNER's full setup: skills, connectors, browser, vault edits; e.g. a data check with OWNER's own skills). "
+            "For large tasks, agree the brief with OWNER first (a short meeting), then read it back in one line."
         ),
         "inputSchema": _schema({
             "kind": {**S, "description": "research, code or session."},
             "title": {**S, "description": "A few words, shown in the ledger."},
             "brief": {**S, "description": "The whole task for an unattended session: goal, what done looks like, where to look, limits, and what to report."},
-            "spend_usd": {**N, "description": "Only if he agreed to spend art credits: the most it may spend, in dollars. Otherwise leave it out."},
+            "spend_usd": {**N, "description": "Only if OWNER agreed to spend art credits: the most it may spend, in dollars. Otherwise leave it out."},
         }, ["kind", "title", "brief"]),
     },
     {
@@ -128,7 +128,7 @@ TOOLS = [
     },
     {
         "name": "pin_to_board",
-        "description": "Pin a link to the notice board in the game, e.g. a claude.ai artifact such as the Arknights dashboard. https only.",
+        "description": "Pin a link to the notice board in the game, e.g. a claude.ai artifact such as a dashboard. https only.",
         "inputSchema": _schema({
             "title": S, "url": S,
             "note": {**S, "description": "Optional: one line on what it is."},
@@ -172,11 +172,11 @@ GAME_TOOLS = [
         }, ["why"]),
     },
     {
-        "name": "walk_with_kristian",
-        "description": "Follow Kristian as he walks about the vault, a step or two behind, until the game next asks you, the minutes are up, or you call wander.",
+        "name": "walk_with_owner",
+        "description": "Follow OWNER as they walk about the vault, a step or two behind, until the game next asks you, the minutes are up, or you call wander.",
         "inputSchema": _schema({
             "why": {**S, "description": "Why, in a few words."},
-            "minutes": {**N, "description": "Optional firm promise: walk with him at least this long (at most 120)."},
+            "minutes": {**N, "description": "Optional firm promise: walk with OWNER at least this long (at most 120)."},
         }, ["why"]),
     },
     {
@@ -247,7 +247,7 @@ def call_game(world: World, name: str, args: dict) -> str:
         return world.set_intent("go", args.get("place", ""), args.get("why", ""), args.get("minutes") or 0)
     if name == "stay_here":
         return world.set_intent("stay", why=args.get("why", ""), minutes=args.get("minutes") or 0)
-    if name == "walk_with_kristian":
+    if name == "walk_with_owner":
         return world.set_intent("follow", why=args.get("why", ""), minutes=args.get("minutes") or 0)
     if name == "settle":
         return world.settle(args.get("how", ""), args.get("why", ""), args.get("item", ""),
@@ -257,9 +257,9 @@ def call_game(world: World, name: str, args: dict) -> str:
     if name == "look_at_map":
         return world.map_text(args.get("room", ""))
     if name == "place_furniture":
-        return world.place(args.get("item", ""), args.get("x"), args.get("y")) + " Kristian sees it when your reply ends."
+        return world.place(args.get("item", ""), args.get("x"), args.get("y")) + " OWNER sees it when your reply ends."
     if name == "clear_furniture":
-        return world.clear(args.get("x"), args.get("y")) + " Kristian sees it when your reply ends."
+        return world.clear(args.get("x"), args.get("y")) + " OWNER sees it when your reply ends."
     if name == "name_place":
         return world.name_place(args.get("id", ""), args.get("name", ""), args.get("x"), args.get("y"))
     if name == "forget_place":
@@ -358,7 +358,8 @@ def main() -> None:
             continue
         reply = handle(ledger, msg, world)
         if reply is not None:
-            sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
+            # tool texts say OWNER and Tally; this vault's names go in on the way out
+            sys.stdout.write(cfg.fill(json.dumps(reply, ensure_ascii=False)) + "\n")
             sys.stdout.flush()
 
 
