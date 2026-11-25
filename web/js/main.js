@@ -7,6 +7,7 @@ import * as ledger from "./ledger.js";
 import * as board from "./board.js";
 import { login, logout } from "./login.js";
 import { names, setNames, fill, fillPage } from "./names.js";
+import * as character from "./character.js";
 
 window.vaultStarted = true; // the scripts loaded; the door may still be closed
 
@@ -920,6 +921,8 @@ $("m-new").addEventListener("click", () => { closeMenu(); newConversation(); });
 $("m-board").addEventListener("click", () => { closeMenu(); openBoard(); });
 $("m-ledger").addEventListener("click", () => { closeMenu(); openLedger(); });
 $("m-logout").addEventListener("click", () => logout());
+$("m-character").addEventListener("click", () => { closeMenu(); character.open(); });
+character.initCharacter();
 
 function openBoard() { return isGuest() ? forOwner("notice board") : board.open(); }
 function openLedger() {
@@ -950,6 +953,10 @@ window.addEventListener("keydown", (e) => {
   if (menuOpen()) {
     if (e.key === "Escape" || e.key === "m") { e.preventDefault(); closeMenu(); }
     return;
+  }
+  if (character.isOpen()) {
+    if (e.key === "Escape") { e.preventDefault(); character.close(); }
+    return; // typing goes to the form
   }
   if (ledger.isOpen()) {
     if (e.key === "Escape") { e.preventDefault(); ledger.close(); }
@@ -1012,10 +1019,9 @@ async function boot() {
     w.creatures.player = { ...w.creatures.player, name: "Guest", fg: "#b8c0cc",
       iso: { ...w.creatures.player.iso, color: "#5a6878" }, portrait: { frame: "#8a94a4" } };
     $("talk-prompt").textContent = "Guest>";
+    for (const id of ["board-open", "m-board", "m-ledger", "m-character"]) $(id).hidden = true;
   } else {
     $("talk-prompt").textContent = `${names.owner}>`;
-    $("say").placeholder = "Say something to Tally (Esc to step away)";
-    for (const id of ["board-open", "m-board", "m-ledger"]) $(id).hidden = true;
   }
   [state.player.x, state.player.y] = w.spawn;
   [state.tally.x, state.tally.y] = w.tally;

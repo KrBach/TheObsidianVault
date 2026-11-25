@@ -141,6 +141,8 @@ def load_config(path: Path | None = None) -> Config:
     cfg.companion = clean_name(names.get("companion"), DEFAULT_COMPANION)
     cfg.owner_portrait = str(names.get("owner_portrait", "")).strip()
     cfg.timezone = str(tally.get("timezone", "")).strip()
+    from .character import apply_settings
+    apply_settings(cfg)  # what the owner set in the game's Character window wins over this file
     work = os.environ.get("TALLY_WORK_DIR") or tally.get("work_dir")
     if work:
         cfg.work_dir = _expand(work)

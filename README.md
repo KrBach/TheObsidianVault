@@ -28,7 +28,7 @@ python3 -m obsidian_vault
 
 It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so your vault path stays local.
 
-Set your name in `config.toml` under `[names]`: `owner` (you), `companion` (default Tally) and optionally `owner_portrait`. The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. Set `[tally] timezone` (for example `"Europe/Berlin"`) for log timestamps; it defaults to this computer's.
+Set your name in the game (menu, Esc → **Character**: your name, your companion's name, a portrait upload, the time zone and your password), or by hand in `config.toml` under `[names]`: `owner` (you), `companion` (default Tally) and optionally `owner_portrait`. What you set in the game is kept in `.vault-state/settings.json` and wins over `config.toml`, which the game never rewrites. The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. Set `[tally] timezone` (for example `"Europe/Berlin"`) for log timestamps; it defaults to this computer's.
 
 ### Logging in
 

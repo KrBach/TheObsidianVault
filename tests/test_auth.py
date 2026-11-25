@@ -138,6 +138,33 @@ class ServerGateTest(unittest.TestCase):
         self.assertNotIn("--mcp-config", cmd)
         self.assertNotEqual(Path(self.game.guest_brain._cwd()).resolve(), self.game.cfg.core_dir.resolve())
 
+    def test_character_settings(self):
+        import base64
+        c = self.login("owner", "supersecret")
+        png = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\nrest").decode()
+        status, data, _ = self.call("/api/character", {"owner": "Robin", "companion": "Quill",
+                                                       "timezone": "Europe/Berlin", "portrait": png}, cookie=c)
+        self.assertEqual((status, data["owner"], data["companion"], data["owner_portrait"]), (200, "Robin", "Quill", "portrait/owner"))
+        self.assertIn("Quill", self.game.guest_brain.persona.system_prompt)
+        with urllib.request.urlopen(self.url + "/portrait/owner") as r:  # shown on the login card, so no login
+            self.assertTrue(r.read().startswith(b"\x89PNG"))
+        from obsidian_vault.config import load_config
+        import os
+        cfg_path = Path(self.tmp.name) / "c.toml"
+        cfg_path.write_text(f'[writes]\nstate_dir = "{self.game.cfg.state_dir}"\n', encoding="utf-8")
+        again = load_config(cfg_path)  # a new process (the vault tools) sees the same names
+        self.assertEqual((again.owner, again.companion, again.timezone), ("Robin", "Quill", "Europe/Berlin"))
+        bad = [{"owner": ""}, {"timezone": "Mars/Olympus"}, {"portrait": "data:image/png;base64," + base64.b64encode(b"GIF89a").decode()},
+               {"portrait": "data:text/html;base64,PGI+"}, {"old_password": "nope", "new_password": "another1"}]
+        for body in bad:
+            self.assertEqual(self.call("/api/character", body, cookie=c)[0], 400, body)
+        self.assertEqual(self.call("/api/character", {"old_password": "supersecret", "new_password": "newsecret"}, cookie=c)[0], 200)
+        self.assertEqual(self.call("/api/login", {"role": "owner", "password": "supersecret"})[0], 401)
+        self.assertEqual(self.call("/api/login", {"role": "owner", "password": "newsecret"})[0], 200)
+        g = self.login("guest")
+        self.assertEqual(self.call("/api/character", {"owner": "Mallory"}, cookie=g)[0], 403)
+        self.assertEqual(self.call("/api/character", cookie=g)[0], 403)
+
     def test_logout(self):
         c = self.login("guest")
         self.call("/api/logout", {}, cookie=c)

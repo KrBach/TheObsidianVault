@@ -85,6 +85,11 @@ class Auth:
                 raise AuthError("a password is already set")
             _write(self.login_file, {"owner": hash_password(pw)})
 
+    def change_password(self, old: str, new: str) -> None:
+        if not verify_password(old or "", self._stored()):
+            raise AuthError("the current password is not right")
+        self.set_password(new)
+
     # ---------- sessions ----------
 
     def _sessions(self) -> dict:

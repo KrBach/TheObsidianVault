@@ -161,3 +161,18 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #login-form input { background: #0a0610; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 6px 8px; outline: none; }
 #login-form input:focus { border-color: var(--accent); }
 #login-form input[hidden] { display: none; }
+
+/* The Character window: names, portrait, time zone, password. */
+#character { width: min(640px, calc(100% - 24px)); left: 50%; right: auto; transform: translateX(-50%); }
+.char-body { display: flex; gap: 16px; overflow-y: auto; min-height: 0; }
+.char-portrait { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.char-portrait img, .char-portrait .guest-art { width: 120px; height: 150px; object-fit: cover; border: 1px solid var(--line); }
+.char-portrait .guest-art { display: flex; align-items: center; justify-content: center; background: linear-gradient(#1a1426, #0a0610); color: var(--dim); font-size: 40px; }
+.char-portrait [hidden] { display: none !important; }
+.char-file { cursor: pointer; font-size: 12px; }
+.link-btn { background: none; border: 0; color: var(--dim); font: inherit; font-size: 11px; cursor: pointer; text-decoration: underline; }
+.char-fields { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.char-fields label { display: flex; flex-direction: column; gap: 2px; color: var(--dim); font-size: 12px; }
+.char-fields input { background: #0a0610; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 4px 8px; outline: none; }
+.char-fields input:focus { border-color: var(--accent); }
+@media (max-width: 800px) { .char-body { flex-direction: column; } }

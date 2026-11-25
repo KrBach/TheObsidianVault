@@ -10,6 +10,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from .auth import COOKIE, SESSION_DAYS, Auth, AuthError
 from .board import Board, BoardError
+from .character import CharacterError, portrait_file
+from . import character, ledger as ledger_mod
 from .brains import Brain, make_brain, make_guest_brain
 from .errands import Errands
 from .config import REPO_ROOT, Config, load_config
@@ -66,6 +68,14 @@ class Game:
                 saved["plan"] = [{**p, "why": ""} for p in saved.get("plan", [])]
         return world
 
+
+    def apply_character(self) -> None:
+        """New names or time zone from the Character window: rebuild what was made with the old ones."""
+        self.persona = load_persona(self.cfg)
+        self.brain.persona = self.persona
+        self.guest_brain.persona = load_guest_persona(self.cfg)
+        ledger_mod._TZ = self.cfg.timezone
+        self.moves.timezone = self.cfg.timezone
 
     def names(self) -> dict:
         return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
@@ -131,7 +141,7 @@ def make_handler(game: Game):
             self.wfile.write(body)
 
         # Guests may walk around and talk to Tally; the owner's things stay theirs.
-        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally")
+        OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -147,6 +157,12 @@ def make_handler(game: Game):
         def do_GET(self):
             if self.path == "/api/login":
                 return self._json({"role": self._role(), "has_password": game.auth.has_password(), "names": game.names()})
+            if self.path.split("?")[0] == "/" + character.PORTRAIT_URL:
+                # the owner's uploaded portrait: on the login card too, so before a login
+                p = portrait_file(game.cfg.state_dir)
+                if not p:
+                    return self._json({"error": "no portrait"}, HTTPStatus.NOT_FOUND)
+                return self._bytes(p.read_bytes(), {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[p.suffix[1:]])
             if not self.path.startswith("/api/"):
                 return super().do_GET()
             role = self._gate()
@@ -171,6 +187,9 @@ def make_handler(game: Game):
                                                for r in game.errands.all()[:20]]})
             if self.path == "/api/world":
                 return self._json(game.world(role))
+            if self.path == "/api/character":
+                return self._json({**game.names(), "timezone": game.cfg.timezone,
+                                   "uploaded": bool(portrait_file(game.cfg.state_dir))})
             if self.path == "/api/pending":
                 return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
                                    "size": game.ledger.size_report(for_tally=False)})
@@ -178,6 +197,8 @@ def make_handler(game: Game):
 
         def do_POST(self):
             length = int(self.headers.get("Content-Length") or 0)
+            if length > 6 * 1024 * 1024:  # a portrait upload is the largest thing the game takes
+                return self._json({"error": "too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
             try:
                 payload = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
@@ -200,6 +221,16 @@ def make_handler(game: Game):
             if not role:
                 return
             guest = role != "owner"
+
+            if self.path == "/api/character":
+                try:
+                    if payload.get("new_password"):
+                        game.auth.change_password(str(payload.get("old_password", "")), str(payload["new_password"]))
+                    character.save(game.cfg, payload)
+                except (CharacterError, AuthError) as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+                game.apply_character()
+                return self._json({"ok": True, **game.names(), "timezone": game.cfg.timezone})
 
             if self.path == "/api/reset":
                 (game.guest_brain if guest else game.brain).reset()
