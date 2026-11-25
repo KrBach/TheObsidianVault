@@ -156,3 +156,57 @@ class BrassMapTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrassTalkTest(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        from types import SimpleNamespace
+        from obsidian_vault.brass import BrassTalk
+        self.dir = Path(tempfile.mkdtemp())
+        core = self.dir / "vault"
+        (core / "denizens" / "brass").mkdir(parents=True)
+        (core / "denizens" / "brass" / "brass-soul.md").write_text("I work test-first.", encoding="utf-8")
+        self.calls = []
+
+        class Brain:
+            def muse(inner, system, prompt, model):
+                self.calls.append((system, prompt, model))
+                return "  It's on the table.  "
+
+        cfg = SimpleNamespace(state_dir=self.dir / "state", core_dir=core, tick_model="haiku",
+                              fill=lambda t: t.replace("OWNER", "Robin"))
+        self.talk = BrassTalk(cfg, Brain())
+
+    def test_answers_with_his_soul_and_his_job_on_the_cheap_model(self):
+        recs = [{"id": "e1", "kind": "code", "title": "Text parser", "status": "running"},
+                {"id": "e0", "kind": "research", "title": "Chess", "status": "done"}]
+        state = {"present": True, "errand": "e1", "say": "Brass is at the Outbox table, working on \"Text parser\"."}
+        reply = self.talk.reply("how's it going?", state, recs, lambda r, full=False: f"Errand {r['id']}: {r['title']}")
+        self.assertEqual(reply, "It's on the table.")
+        system, prompt, model = self.calls[0]
+        self.assertEqual(model, "haiku")
+        self.assertIn("I work test-first.", system)
+        self.assertIn("cannot start", system)
+        self.assertIn("Robin", system)
+        self.assertIn("Errand e1: Text parser", prompt)
+        self.assertNotIn("Chess", prompt)  # only code errands are his
+        self.assertIn('Robin says: "how\'s it going?"', prompt)
+
+    def test_remembers_the_last_few_lines(self):
+        for i in range(8):
+            self.talk.reply(f"line {i}", {"present": False}, [], lambda r, full=False: "")
+        hist = self.talk.history()
+        self.assertEqual(len(hist), BrassTalkTest.keep())
+        self.assertEqual(hist[-1]["said"], "line 7")
+        self.assertIn('"line 7"', self.calls[-1][1])
+        self.assertIn('"line 6"', self.calls[-1][1])
+
+    @staticmethod
+    def keep():
+        from obsidian_vault.brass import BrassTalk
+        return BrassTalk.KEEP
+
+    def test_empty_line_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.talk.reply("   ", {}, [], lambda r, full=False: "")

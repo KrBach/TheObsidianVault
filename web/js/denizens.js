@@ -433,11 +433,26 @@ export function createDenizens(world, api) {
 
   const brass = { kind: "brass", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, nextStep: 0,
                   want: { present: false }, goal: null, arrived: false, pauseUntil: 0, tinker: false,
-                  pinned: "", told: new Set() };
+                  pinned: "", told: new Set(), wanderAt: null, restUntil: 0 };
   // where he may stand: not by a door, the bell, the mat or the way in (as for the cat), nor on its cushion
   const brassOk = (x, y) => open(x, y) && !forbidden(x, y) && id(x, y) !== "cushion";
   const stationOf = (goal) => (world.brass || {})[goal];
+  // Between jobs he lives in the vault and potters about (scripted, no model calls): the Outbox
+  // table, a brazier, the pool's edge, the map table, a reading chair. Earned autonomy can come later.
+  const WARM_B = new Set(["brazier", "fireplace", "fireplace_side"]), BY_B = new Set(["pool", "map_table", "shelf", "archive_shelf", "scribe_desk"]);
+  function wanderSpots() {
+    const out = [];
+    const ob = stationOf("outbox");
+    if (ob) out.push(ob, ob, ob); // his bench, more often than not
+    for (const c of cellsWhere((x, y) => brassOk(x, y) && (by(x, y, WARM_B) || by(x, y, BY_B, STEPS4)))) out.push(c);
+    return out.filter(([x, y]) => brassOk(x, y) && !(x === cat.x && y === cat.y));
+  }
+  function newWander() {
+    const spots = wanderSpots().filter(([x, y]) => dist([x, y], [brass.x, brass.y]) > 3);
+    brass.wanderAt = spots.length ? pick(spots) : stationOf("outbox");
+  }
   function standCell(goal) {
+    if (goal === "wander") { if (!brass.wanderAt) newWander(); return brass.wanderAt; }
     if (goal === "door") return open(...world.exit) ? world.exit : exitIn();
     const a = stationOf(goal);
     if (!a) return null;
@@ -457,8 +472,8 @@ export function createDenizens(world, api) {
   // where he is going: the stage's place, or after pinning a report, wherever the server says is next
   function brassGoal() {
     const w = brass.want;
-    if (!w?.present) return "door";
-    if (w.stage === "reporting" && brass.pinned === w.errand) return w.then || "door";
+    if (!w?.present || w.stage === "leaving") return "wander"; // no job, or a rejected brief: back to his own time
+    if (w.stage === "reporting" && brass.pinned === w.errand) return (w.then && w.then !== "door") ? w.then : "wander";
     return w.goes;
   }
 
@@ -471,6 +486,10 @@ export function createDenizens(world, api) {
       log(`Brass pins a note to the notice board: "${title}" ${w.outcome === "failed" ? "failed" : "is done"}.`, "action");
       brass.pauseUntil = t + BOARD_PAUSE_MS;
     } else if (goal === "door") log("Brass tips his goggles to nobody in particular and goes out by the front door.", "action");
+    else if (goal === "wander") {
+      brass.tinker = dist([brass.x, brass.y], stationOf("outbox") || [-9, -9]) <= 1;
+      brass.restUntil = t + (40 + Math.random() * 100) * 1000;
+    }
   }
 
   function brassStep(t) {
@@ -486,8 +505,11 @@ export function createDenizens(world, api) {
         : `The front door opens and Brass, the Artificer, stumps in with his toolbox, about "${w.title}".`, "action");
     }
     const goal = brassGoal();
+    if (w?.present && w.stage === "leaving") seenOnce(w.errand); // a rejection: nothing to walk out for
+    if (goal === "wander" && brass.goal === "wander" && brass.arrived && t >= brass.restUntil) { newWander(); brass.goal = null; }
     if (goal !== brass.goal) {
-      if (goal === "door" && w?.stage === "leaving" && brass.goal === "desk") log("Brass shrugs at the rejected brief and picks up his toolbox.", "action");
+      if (goal === "wander" && w?.stage === "leaving" && brass.goal === "desk") log("Brass shrugs at the rejected brief and picks up his toolbox.", "action");
+      if (goal === "wander" && brass.goal !== null && brass.goal !== "wander") newWander();
       brass.goal = goal; brass.arrived = false; brass.tinker = false;
       const to = standCell(goal);
       brass.path = (to && bfs([brass.x, brass.y], [to], open)) || [];
@@ -521,7 +543,17 @@ export function createDenizens(world, api) {
   // At boot: an errand waiting or running puts him straight back where he was, with no walk in.
   function brassRestore(st) {
     brassSet(st);
-    if (!st?.present || !["waiting", "working"].includes(st.stage)) return false;
+    if (!st?.present || !["waiting", "working"].includes(st.stage)) {
+      // no job on: he is somewhere in the vault, about his own business
+      newWander();
+      const at = brass.wanderAt;
+      if (!at) return false;
+      [brass.x, brass.y] = at; brass.rx = brass.x; brass.ry = brass.y;
+      brass.hidden = false; brass.alpha = 1; brass.goal = "wander"; brass.arrived = true;
+      brass.restUntil = now() + (20 + Math.random() * 60) * 1000;
+      brass.tinker = dist(at, stationOf("outbox") || [-9, -9]) <= 1;
+      return true;
+    }
     const at = standCell(st.goes);
     if (!at) return false;
     [brass.x, brass.y] = at; brass.rx = brass.x; brass.ry = brass.y;
@@ -533,6 +565,10 @@ export function createDenizens(world, api) {
   function brassText() {
     if (brass.hidden) return "";
     const w = brass.want;
+    if (brass.goal === "wander") {
+      const r = roomAt(brass.x, brass.y);
+      return `Brass is between jobs, pottering about ${r ? r.name : "the vault"}${brass.tinker ? " at his Outbox table" : ""}.`;
+    }
     if (brass.goal === "door" || !w?.present) return "Brass is leaving by the front door.";
     if (brass.pinned === w.errand) return "Brass has pinned his report and is moving on.";
     return (brass.arrived ? w.say : w.going) || "";
@@ -550,6 +586,8 @@ export function createDenizens(world, api) {
     brassSet,
     brassRestore,
     brassText,
+    brassNear: (x, y) => !brass.hidden && dist([brass.x, brass.y], [x, y]) <= 1,
+    brassAround: () => around(brass.x, brass.y, open),
     at(x, y) {
       if (cat.x === x && cat.y === y) return "cat";
       if (!imp.hidden && imp.x === x && imp.y === y) return "imp";

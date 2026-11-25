@@ -3,10 +3,13 @@
 Scripted, no model calls. The server works out Brass's stage from the ledger (code errands waiting
 for approval) and the errand records (running, done, failed); the browser walks him there.
 
-- queued (propose_errand, kind "code"): he comes in by the front door and stands by Tally's desk;
-- rejected: he walks back out of the front door;
+- queued (propose_errand, kind "code"): he goes and stands by Tally's desk;
+- rejected: he goes back to his own business;
 - approved and running: he works at the Outbox table, tinkering;
-- done or failed: he takes the report to the notice board, pauses, and leaves by the front door.
+- done or failed: he takes the report to the notice board, pauses, and goes back to his own business.
+
+Between jobs he lives in the vault and potters about (the browser picks where; no model calls).
+OWNER can talk to him (BrassTalk, below): one cheap model call per line, with his soul file.
 
 There is one Brass. With several code errands he goes to the oldest one not yet finished with.
 What he has seen is kept in <state_dir>/brass.json, so the game knows after a restart which errands
@@ -28,6 +31,9 @@ import time
 from pathlib import Path
 
 from .config import REPO_ROOT
+
+TALK_SKETCH = REPO_ROOT / "context" / "brass-talk.md"
+SOUL = Path("denizens") / "brass" / "brass-soul.md"  # in the vault, relative to core_dir
 
 NAME = "Brass"
 ONE_OFF_SECONDS = 10 * 60  # a walk to the board or the door that no browser played out lapses after this
@@ -179,3 +185,76 @@ class Brass:
             return ""
         say, going = self.phrases(st)
         return say if arrived else going
+
+
+class BrassTalk:
+    """Talking to Brass: one cheap model call per line (the tick's model), with his soul file and what
+    he is doing. He can explain his work; he cannot start any (that stays with errands OWNER approves).
+    The last few exchanges are kept in <state_dir>/brass-talk.json so he remembers the conversation."""
+
+    KEEP = 6
+
+    def __init__(self, cfg, brain):
+        self.cfg, self.brain = cfg, brain
+        self.file = Path(cfg.state_dir) / "brass-talk.json"
+
+    def history(self) -> list[dict]:
+        try:
+            data = json.loads(self.file.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def _remember(self, said: str, reply: str) -> None:
+        talk = (self.history() + [{"said": said[:600], "reply": reply[:1200], "time": time.time()}])[-self.KEEP:]
+        self.file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.file.with_name(f".{self.file.name}.tmp")
+        tmp.write_text(json.dumps(talk, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, self.file)
+
+    def system(self) -> str:
+        try:
+            sketch = TALK_SKETCH.read_text(encoding="utf-8")
+        except OSError:
+            sketch = "You are Brass, the Artificer, the game's code-maker. Answer briefly."
+        soul = ""
+        core = getattr(self.cfg, "core_dir", None)
+        if core:
+            try:
+                soul = (Path(core) / SOUL).read_text(encoding="utf-8")[:6000]
+            except OSError:
+                soul = ""
+        text = sketch + (f"\n\n## Your soul file (your own words about how you work)\n\n{soul}" if soul else "")
+        return getattr(self.cfg, "fill", lambda t: t)(text)
+
+    def prompt(self, text: str, state: dict, errands: list[dict], summary) -> str:
+        lines = []
+        where = state.get("say") if state.get("present") else ""
+        lines.append(f"Where you are: {where or 'between jobs, pottering about the vault.'}")
+        current = next((r for r in errands if r.get("id") == state.get("errand")), None)
+        if current:
+            lines += ["", "The errand you are on:", summary(current, full=False)[:2500]]
+        mine = [r for r in errands if r.get("kind") == "code"][:6]
+        if mine:
+            lines += ["", "Recent code errands (newest first):"]
+            lines += [f"- {r.get('title', '')} ({r.get('status')})" for r in mine]
+            last = next((r for r in mine if r.get("status") in ("done", "failed") and r is not current), None)
+            if last:
+                lines += ["", "Your last finished report:", summary(last, full=False)[:2000]]
+        talk = self.history()
+        if talk:
+            lines += ["", "The conversation so far:"]
+            for t in talk:
+                lines += [f'- OWNER: "{t["said"]}"', f'  You: "{t["reply"]}"']
+        lines += ["", f'OWNER says: "{text}"', "", "Answer as Brass, with your reply only."]
+        return getattr(self.cfg, "fill", lambda t: t)("\n".join(lines))
+
+    def reply(self, text: str, state: dict, errands: list[dict], summary) -> str:
+        text = " ".join(str(text or "").split())[:600]
+        if not text:
+            raise ValueError("say something first")
+        answer = self.brain.muse(self.system(), self.prompt(text, state, errands, summary),
+                                 getattr(self.cfg, "tick_model", "haiku")).strip()
+        answer = answer or "Brass grunts, which is not an answer."
+        self._remember(text, answer)
+        return answer

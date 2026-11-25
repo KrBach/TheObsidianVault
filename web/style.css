@@ -49,6 +49,10 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 /* With the cat: its portrait takes Tally's place, and the talk line becomes a row of things to do. */
 #bottom .portrait#portrait-cat, #bottom.with-cat .portrait#portrait-tally { display: none; }
 #bottom.with-cat .portrait#portrait-cat { display: flex; }
+/* Talking to Brass: his portrait takes Tally's place. */
+#bottom .portrait#portrait-brass, #bottom.with-brass .portrait#portrait-tally { display: none; }
+#bottom.with-brass .portrait#portrait-brass { display: flex; }
+#log .brass { color: #d8b070; }
 #cat-actions { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid var(--line); padding: 6px 8px; }
 #cat-actions[hidden] { display: none; }
 #cat-actions button { background: transparent; color: var(--text); border: 1px solid var(--line); padding: 3px 10px; font: inherit; cursor: pointer; }
