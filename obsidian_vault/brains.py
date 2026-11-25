@@ -12,17 +12,74 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import threading
 from typing import Iterator
 
-from .config import Config
+from .config import REPO_ROOT, Config
 from .persona import Persona
 
 TOOL_FLAVOUR = {
     "Read": "Tally pulls a note from a shelf",
     "Glob": "Tally runs a finger along the shelf labels",
     "Grep": "Tally leafs through the ledger, looking for something",
+    "mcp__vault__append_interaction_log": "Tally writes a line in the ledger",
+    "mcp__vault__add_coaching_item": "Tally pins a note for the coaching thread",
+    "mcp__vault__propose_edit": "Tally drafts a correction and sets it on the desk for you",
+    "mcp__vault__propose_note": "Tally drafts a new note and sets it on the desk for you",
+    "mcp__vault__vault_size": "Tally weighs the ledger",
+    "mcp__vault__edit_soul": "Tally amends a page of their own",
+    "mcp__vault__go_to": "Tally marks a place on the map",
+    "mcp__vault__stay_here": "Tally settles in",
+    "mcp__vault__walk_with_kristian": "Tally tucks the ledger under one arm, ready to walk",
+    "mcp__vault__wander": "Tally shrugs off the last promise",
+    "mcp__vault__look_at_map": "Tally unrolls the plan of the vault",
+    "mcp__vault__place_furniture": "Tally rearranges the room",
+    "mcp__vault__clear_furniture": "Tally clears a space",
+    "mcp__vault__name_place": "Tally pencils a new name onto the plan",
+    "mcp__vault__forget_place": "Tally rubs out a name on the plan",
 }
+
+VAULT_TOOLS = [
+    "mcp__vault__append_interaction_log",
+    "mcp__vault__add_coaching_item",
+    "mcp__vault__propose_edit",
+    "mcp__vault__propose_note",
+    "mcp__vault__vault_size",
+    "mcp__vault__edit_soul",
+]
+
+GAME_TOOLS = [
+    "mcp__vault__go_to",
+    "mcp__vault__stay_here",
+    "mcp__vault__walk_with_kristian",
+    "mcp__vault__wander",
+    "mcp__vault__look_at_map",
+    "mcp__vault__place_furniture",
+    "mcp__vault__clear_furniture",
+    "mcp__vault__name_place",
+    "mcp__vault__forget_place",
+]
+
+
+def write_mcp_config(cfg: Config) -> str:
+    """The MCP config that lets Claude Code start the vault tools. Returns its path."""
+    env = {
+        "PYTHONPATH": str(REPO_ROOT),
+        "VAULT_WRITES": cfg.writes_mode,
+        "VAULT_STATE_DIR": str(cfg.state_dir),
+    }
+    if cfg.config_path:
+        env["VAULT_CONFIG"] = str(cfg.config_path)
+    if cfg.core_dir:
+        env["TALLY_CORE_DIR"] = str(cfg.core_dir)
+    conf = {"mcpServers": {"vault": {"type": "stdio", "command": sys.executable,
+                                     "args": ["-m", "obsidian_vault.vault_mcp"], "env": env}}}
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    path = cfg.state_dir / "mcp.json"
+    path.write_text(json.dumps(conf, indent=2), encoding="utf-8")
+    return str(path)
 
 
 CLAUDE_MISSING = (
@@ -41,6 +98,10 @@ class Brain:
     def reset(self) -> None:
         pass
 
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        """One short, separate call with no tools and no memory (Tally's tick). Raises on failure."""
+        raise NotImplementedError
+
 
 class ClaudeCodeBrain(Brain):
     """Runs `claude -p` in headless mode and resumes the same session each turn."""
@@ -53,21 +114,27 @@ class ClaudeCodeBrain(Brain):
         self.session_id: str | None = None
         self.lock = threading.Lock()
         self.exe = cfg.claude_path
+        self.writes = cfg.writes_mode != "off"
+        self.mcp_config = write_mcp_config(cfg)  # the game tools are always there; writing tools by mode
 
     def reset(self) -> None:
         self.session_id = None
 
     def _command(self) -> list[str]:
         tools = ",".join(self.cfg.tools)
+        allowed = ",".join(self.cfg.tools + GAME_TOOLS + (VAULT_TOOLS if self.writes else []))
         cmd = [
             self.exe or "claude", "-p",
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--system-prompt", self.persona.system_prompt,
+            # Built-in tools stay read-only; writing goes only through the vault tools.
             "--tools", tools,
-            "--allowedTools", tools,
+            "--allowedTools", allowed,
             # Anything not on the allow list is refused instead of prompting.
             "--permission-mode", "dontAsk",
         ]
+        # Only our vault server: no MCP servers from the user's own Claude Code setup.
+        cmd += ["--mcp-config", self.mcp_config, "--strict-mcp-config"]
         if self.cfg.model:
             cmd += ["--model", self.cfg.model]
         if self.session_id:
@@ -120,6 +187,28 @@ class ClaudeCodeBrain(Brain):
                 err = (proc.stderr.read() if proc.stderr else "").strip()
                 yield {"type": "error", "text": err[-500:] or f"claude exited with code {proc.returncode}"}
         yield {"type": "done"}
+
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        if not self.exe:
+            raise RuntimeError(CLAUDE_MISSING)
+        base = [self.exe, "-p", "--output-format", "json", "--system-prompt", system,
+                "--tools", "", "--strict-mcp-config", "--permission-mode", "dontAsk"]
+        if model:
+            base += ["--model", model]
+        # Run outside the vault and the repo so no CLAUDE.md is loaded: the tick stays small.
+        cwd = tempfile.gettempdir()
+        for extra in (["--no-session-persistence"], []):  # older Claude Code lacks the flag
+            proc = subprocess.run(base + extra, input=prompt, capture_output=True, text=True,
+                                  encoding="utf-8", cwd=cwd, timeout=120)
+            if proc.returncode == 0 or "no-session-persistence" not in (proc.stderr or ""):
+                break
+        try:
+            out = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            raise RuntimeError((proc.stderr or proc.stdout or "no output").strip()[-300:])
+        if out.get("is_error"):
+            raise RuntimeError(str(out.get("result") or "Claude Code reported an error."))
+        return str(out.get("result") or "")
 
 
 class ApiBrain(Brain):
@@ -183,6 +272,14 @@ class ApiBrain(Brain):
             else:
                 self.history.append({"role": "assistant", "content": final.content})
         yield {"type": "done"}
+
+    MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
+
+    def muse(self, system: str, prompt: str, model: str) -> str:
+        msg = self.client.messages.create(
+            model=self.MODELS.get(model, model or self.model), max_tokens=200,
+            system=system, messages=[{"role": "user", "content": prompt}])
+        return "".join(b.text for b in msg.content if b.type == "text")
 
 
 def make_brain(cfg: Config, persona: Persona) -> Brain:

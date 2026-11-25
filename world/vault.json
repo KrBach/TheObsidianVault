@@ -1,21 +1,21 @@
 {
  "name": "The Obsidian Vault",
  "map": [
-  "###################################################",
-  "#,..,....,....,...#................#.....,.....,..#",
-  "#.SSSSS....SSSSS..#..*..........*..#..o---o.......#",
-  "#.................#................#..|....\\......#",
-  "#.SSSSS....SSSSS..#.......dd.......#..o.....o--o..#",
-  "#.................+.......dT.......+...\\...|...|..#",
-  "#.SSSSS....SSSSS..#................#....o--o...o..#",
-  "#,....,....,...,..#.~~~~......*....#..,......,....#",
-  "#########+#########.~~~~...........#######+########",
-  "#.................#####.......#####...............#",
-  "#.AAAAAAAAAAAAAA..+..*...........*.+...%.....%....#",
-  "#.................#...............#......%........#",
-  "#.AAAAAAAAAAAAAA..#...............#..%.......%..%.#",
-  "#,....,....,....,.#.......=.......#.,....,....,...#",
-  "##########################+########################"
+  "#####################################################################",
+  "#,..,....,....,...#~~~.........,...#.....,.....,..#..,i.....i...,.i.#",
+  "#.SSSSS....SSSSS..#~~~...,.........#..o---o.......#..w..w..w..w..w..#",
+  "#........i........#.......T........#..|....\\......+.................#",
+  "#.SSSSS....SSSSS..#......ede.....,.#..o.....o--o..#..w..w..w..w..w..#",
+  "#........i........+................+...\\...|...|..#i.....i.....i..i.#",
+  "#.SSSSS....SSSSS..#...,............#....o--o...o..#..SSSS.....SSSS..#",
+  "#,....,....,...,..#...........,....#..,......,....#.....,...........#",
+  "#########+#########*..............*#######+################+#########",
+  "#.................#####.......#####...............#..i...........i..#",
+  "#.AAAAAAAAAAAAAA..+...*.......*...+....%.....%....#.i..MMMMMMMMM..i.#",
+  "#........i........#...............#......%..i.....+....MMMMMMMMM....#",
+  "#.AAAAAAAAAAAAAA..#.....B.........#..%.......%..%.#..,.....C.....,..#",
+  "#,....,....,....,.#.......=.......#.,....,....,...#..i...........i..#",
+  "##########################+##########################################"
  ],
  "legend": {
   "#": "wall",
@@ -25,6 +25,9 @@
   "S": "shelf",
   "A": "archive_shelf",
   "d": "desk",
+  "e": "desk_side",
+  "w": "scribe_desk",
+  "M": "map_table",
   "T": "floor",
   "*": "brazier",
   "~": "pool",
@@ -34,7 +37,10 @@
   "\\": "graph_edge",
   "/": "graph_edge",
   "=": "mat",
-  "%": "papers"
+  "%": "papers",
+  "i": "candle",
+  "B": "bell",
+  "C": "compass_rose"
  },
  "spawn": [
   26,
@@ -45,8 +51,8 @@
   14
  ],
  "tally": [
-  27,
-  5
+  26,
+  3
  ],
  "rooms": [
   {
@@ -69,7 +75,7 @@
     17,
     9
    ],
-   "desc": "Tally's desk sits here with the ledger open. Two braziers, and a still pool that reflects nothing quite right."
+   "desc": "Tally's desk faces the way in, with the ledger open. A brazier on either side of the entrance, and a still pool in the far corner that reflects nothing quite right."
   },
   {
    "id": "graph",
@@ -114,6 +120,166 @@
     7
    ],
    "desc": "Loose pages Tally has written for you: digests, reviews, simulations."
+  },
+  {
+   "id": "scriptorium",
+   "name": "The Scriptorium",
+   "rect": [
+    50,
+    0,
+    19,
+    9
+   ],
+   "desc": "Slanted desks in rows, each with a candle. Finished notes, digests and reviews are written up here before they go to the Outbox."
+  },
+  {
+   "id": "maproom",
+   "name": "The Map Room",
+   "rect": [
+    50,
+    8,
+    19,
+    7
+   ],
+   "desc": "A great table covered in one map: the vault's index and every theme index, with the links drawn in between."
+  }
+ ],
+ "tally_posts": [
+  {
+   "at": [
+    26,
+    3
+   ],
+   "room": "hearth",
+   "dwell": [
+    60,
+    150
+   ]
+  },
+  {
+   "at": [
+    9,
+    4
+   ],
+   "room": "library",
+   "dwell": [
+    20,
+    45
+   ]
+  },
+  {
+   "at": [
+    56,
+    3
+   ],
+   "room": "scriptorium",
+   "dwell": [
+    30,
+    70
+   ]
+  },
+  {
+   "at": [
+    58,
+    12
+   ],
+   "room": "maproom",
+   "dwell": [
+    25,
+    60
+   ]
+  }
+ ],
+ "spots": [
+  {
+   "id": "desk",
+   "name": "at your desk, with the ledger",
+   "at": [
+    26,
+    3
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "pool",
+   "name": "by the still pool",
+   "at": [
+    22,
+    2
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "brazier",
+   "name": "by the west brazier, at the Hearth's entrance",
+   "at": [
+    20,
+    8
+   ],
+   "room": "hearth"
+  },
+  {
+   "id": "library",
+   "name": "among the theme shelves",
+   "at": [
+    9,
+    4
+   ],
+   "room": "library"
+  },
+  {
+   "id": "archive",
+   "name": "along the archive shelves",
+   "at": [
+    6,
+    11
+   ],
+   "room": "archive"
+  },
+  {
+   "id": "graph",
+   "name": "among the hanging notes of the graph",
+   "at": [
+    41,
+    4
+   ],
+   "room": "graph"
+  },
+  {
+   "id": "outbox",
+   "name": "sorting the loose pages in the Outbox",
+   "at": [
+    40,
+    11
+   ],
+   "room": "outbox"
+  },
+  {
+   "id": "scriptorium",
+   "name": "at a writing desk in the Scriptorium",
+   "at": [
+    56,
+    3
+   ],
+   "room": "scriptorium"
+  },
+  {
+   "id": "maproom",
+   "name": "at the great map table",
+   "at": [
+    58,
+    12
+   ],
+   "room": "maproom"
+  },
+  {
+   "id": "door",
+   "name": "by the way in, watching the door",
+   "at": [
+    26,
+    12
+   ],
+   "room": "hall"
   }
  ]
 }

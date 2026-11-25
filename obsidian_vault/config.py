@@ -12,6 +12,10 @@ from . import minitoml
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+DEFAULT_FOLDERS = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
+WRITE_MODES = ("off", "review", "direct")
+
+
 @dataclass
 class Config:
     core_dir: Path | None
@@ -23,6 +27,13 @@ class Config:
     claude_path: str = ""
     host: str = "127.0.0.1"
     port: int = 8765
+    writes_mode: str = "review"
+    writes_folders: list[str] = field(default_factory=lambda: list(DEFAULT_FOLDERS))
+    soul_direct: bool = True  # soul.md is Tally's own: their lines and edits go in without review
+    state_dir: Path = REPO_ROOT / ".vault-state"
+    config_path: Path | None = None
+    tick_minutes: float = 6.0
+    tick_model: str = "haiku"
 
 
 # Where Claude Code is often installed when `claude` is not on the PATH that Python sees.
@@ -66,6 +77,7 @@ def load_config(path: Path | None = None) -> Config:
     tally = data.get("tally", {})
     brain = data.get("brain", {})
     server = data.get("server", {})
+    writes = data.get("writes", {})
 
     core = os.environ.get("TALLY_CORE_DIR") or tally.get("core_dir")
     cfg = Config(
@@ -78,9 +90,22 @@ def load_config(path: Path | None = None) -> Config:
         claude_path=os.environ.get("CLAUDE_PATH") or brain.get("claude_path", ""),
         host=server.get("host", "127.0.0.1"),
         port=int(os.environ.get("VAULT_PORT") or server.get("port", 8765)),
+        writes_mode=str(os.environ.get("VAULT_WRITES") or writes.get("mode", "review")).lower(),
+        writes_folders=list(writes.get("folders", DEFAULT_FOLDERS)),
+        soul_direct=bool(writes.get("soul_direct", True)),
+        state_dir=_expand(os.environ.get("VAULT_STATE_DIR") or writes.get("state_dir", ".vault-state")),
+        config_path=path.resolve() if path.exists() else None,
+        tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),
+        tick_model=str(tally.get("tick_model", "haiku")),
     )
+    if cfg.writes_mode not in WRITE_MODES:
+        print(f'note: writes.mode "{cfg.writes_mode}" is not one of {", ".join(WRITE_MODES)}; using "off".')
+        cfg.writes_mode = "off"
     # Claude Code (your normal login) is the default. The API is only used when asked for.
     if cfg.brain in ("auto", ""):
         cfg.brain = "claude-code"
+    # The vault tools are an MCP server that Claude Code starts; the API brain has no way to call them.
+    if cfg.brain != "claude-code":
+        cfg.writes_mode = "off"
     cfg.claude_path = find_claude(cfg.claude_path)
     return cfg

@@ -12,6 +12,13 @@ core_files = ["bootstrap.md", "soul.md"]
 # Lives in the repo because it describes the game, not Tally.
 context_file = "context/the-vault-game.md"
 
+# Every few minutes while the game is open, Tally is asked whether to go somewhere or say
+# something. Each tick is one small call (no tools, no history, a short sketch of Tally):
+# about 4,000 tokens in and 50 out, under a tenth of a cent on Haiku. 0 turns it off.
+# Ticks pause while the tab is hidden and after 30 minutes without input from you.
+tick_minutes = 6
+tick_model = "haiku"
+
 [brain]
 # "claude-code" (default): runs `claude -p` with your Claude Code login. No API key, no packages.
 # "api": calls the Claude API with ANTHROPIC_API_KEY (needs: python3 -m pip install -r requirements.txt).
@@ -23,8 +30,28 @@ claude_path = ""
 # Leave empty to use your Claude Code default model.
 model = ""
 
-# Tools Tally may use in claude-code mode. Read-only: she can look at notes, never edit them.
+# Tools Tally may use in claude-code mode. Read-only: Tally can look at notes but not edit them.
+# Writing goes only through the vault tools below, never through Edit or Write.
 tools = ["Read", "Glob", "Grep"]
+
+[writes]
+# How Tally may write to the vault (Claude Code brain only):
+#   "off"     nothing is written
+#   "review"  note edits and new notes wait for your approval in the game (the ledger panel);
+#             soul.md changes go in at once unless soul_direct = false
+#   "direct"  the same, and soul.md changes go in at once whatever soul_direct says
+mode = "review"
+
+# soul.md is Tally's own: its log lines, coaching items and edits go in at once, with a backup.
+# false = those wait for your review too.
+soul_direct = true
+
+# Theme folders where Tally may propose note edits and new notes.
+# bootstrap.md, archive/, templates/ and hidden folders are never written.
+folders = ["games", "worldbuilding", "ai-risk", "obsidian", "experiments"]
+
+# Pending changes, backups and the write journal (git-ignored).
+state_dir = ".vault-state"
 
 [server]
 host = "127.0.0.1"

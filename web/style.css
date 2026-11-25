@@ -22,8 +22,9 @@ header { display: flex; justify-content: space-between; align-items: baseline; b
 .warn { color: var(--warn); }
 
 main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
-#view { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; background: #050308; border: 1px solid var(--line); overflow: hidden; }
-#map { image-rendering: pixelated; }
+#view { position: relative; flex: 1 1 auto; display: flex; align-items: center; justify-content: center; background: #050308; border: 1px solid var(--line); overflow: hidden; }
+#map { image-rendering: pixelated; cursor: pointer; }
+#hover { position: absolute; left: 8px; bottom: 6px; color: var(--dim); pointer-events: none; text-shadow: 0 0 4px #000; }
 
 #side { width: 260px; flex: 0 0 260px; display: flex; flex-direction: column; gap: 8px; }
 .panel { background: var(--panel); border: 1px solid var(--line); padding: 8px; }
@@ -32,8 +33,21 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .keys b { color: var(--text); font-weight: normal; }
 .keys div { color: var(--dim); }
 
-#bottom { flex: 0 0 34%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); min-height: 160px; }
+#bottom { flex: 0 0 26%; transition: flex-basis 0.2s; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); min-height: 160px; }
+#dialogue { flex: 1 1 auto; display: flex; min-height: 0; }
 #log { flex: 1 1 auto; overflow-y: auto; padding: 8px; white-space: pre-wrap; }
+
+/* Portraits show only while talking to Tally. */
+.portrait { display: none; margin: 8px; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px; }
+#bottom.talking .portrait { display: flex; }
+.portrait .art { position: relative; width: 120px; height: 150px; border: 2px solid var(--frame); box-shadow: 0 0 0 1px #000, inset 0 0 12px #000; background: #0a0610; overflow: hidden; opacity: 0.55; filter: saturate(0.6); transition: opacity 0.3s, filter 0.3s, box-shadow 0.3s; }
+.portrait .art [hidden] { display: none !important; }
+.portrait .art video.clip { position: absolute; inset: 0; opacity: 0; transition: opacity 0.35s ease; }
+.portrait .art video.clip.on { opacity: 1; }
+.portrait.pixelated .art img, .portrait.pixelated .art canvas { image-rendering: pixelated; }
+.portrait .art canvas, .portrait .art img, .portrait .art video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.portrait .name { color: var(--frame); font-size: 12px; letter-spacing: 0.1em; }
+.portrait.speaking .art { opacity: 1; filter: none; box-shadow: 0 0 0 1px #000, 0 0 14px var(--frame); }
 #log .you { color: var(--you); }
 #log .tally { color: var(--tally); }
 #log .tally .who, #log .you .who { opacity: 0.7; }
@@ -43,13 +57,49 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 #log .thinking::after { content: "▌"; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
+#talk[hidden] { display: none; }
+#fatal[hidden] { display: none; }
+#fatal { position: fixed; left: 16px; right: 16px; top: 16px; z-index: 50; padding: 12px; background: #2a0d12; border: 1px solid var(--warn); color: var(--warn); white-space: pre-wrap; }
+#bottom.talking { flex-basis: 210px; }
 #talk { display: flex; gap: 8px; border-top: 1px solid var(--line); padding: 6px 8px; }
 #talk .prompt { color: var(--you); }
 #say { flex: 1; background: transparent; border: 0; color: var(--text); font: inherit; outline: none; }
+
+/* The ledger: Tally's proposed vault changes, waiting for approval. */
+#ledger[hidden], #review[hidden] { display: none; }
+#ledger .count { color: var(--you); letter-spacing: 0; margin-left: 4px; }
+#ledger-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.ledger-item { display: flex; flex-direction: column; text-align: left; background: #120c1d; border: 1px solid var(--line); color: var(--text); font: inherit; font-size: 12px; padding: 4px 6px; cursor: pointer; }
+.ledger-item:hover { border-color: var(--accent); }
+.ledger-item .kind { color: var(--you); font-size: 11px; }
+.ledger-item .file { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-item .sum { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-item.stale .kind { color: var(--warn); }
+.small { font-size: 11px; margin-top: 6px; }
+#review { position: absolute; inset: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(10, 6, 16, 0.96); border: 1px solid var(--accent); padding: 10px; z-index: 5; }
+.review-head { display: flex; justify-content: space-between; color: var(--accent); }
+#review-close { background: none; border: 0; color: var(--dim); font: inherit; font-size: 18px; cursor: pointer; }
+#review-diff { flex: 1 1 auto; overflow: auto; margin: 0; padding: 6px; background: #050308; border: 1px solid var(--line); white-space: pre-wrap; word-break: break-word; font: 12px/1.4 var(--font); }
+#review-diff .add { color: #8fe08a; background: rgba(80, 160, 80, 0.12); }
+#review-diff .del { color: var(--warn); background: rgba(200, 80, 70, 0.12); }
+#review-diff .hunk { color: var(--dim); }
+.review-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.review-foot .warn { flex: 1; font-size: 12px; }
+.review-foot button { background: #120c1d; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 4px 10px; cursor: pointer; }
+.review-foot button.primary { border-color: var(--accent); color: var(--accent); }
+.review-foot button:disabled { opacity: 0.4; cursor: default; }
 
 @media (max-width: 800px) {
   main { flex-direction: column; }
   #side { width: auto; flex: 0 0 auto; flex-direction: row; overflow-x: auto; }
   #side .panel { min-width: 200px; }
   .keys { display: none; }
+  .portrait .art { width: 72px; height: 90px; }
+}
+
+/* Tally is thinking: the portrait frame breathes, whatever image is in it. */
+.portrait.thinking .art { animation: portrait-think 1.6s ease-in-out infinite; }
+@keyframes portrait-think {
+  0%, 100% { box-shadow: 0 0 0 1px #000, 0 0 6px var(--frame); }
+  50% { box-shadow: 0 0 0 1px #000, 0 0 18px var(--frame); }
 }

@@ -9,11 +9,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 from .brains import Brain, make_brain
 from .config import REPO_ROOT, Config, load_config
+from .ledger import Ledger, LedgerError
 from .persona import Persona, load_persona, vault_shelves
+from .tick import Ticker
+from .world import World
 
 WEB_DIR = REPO_ROOT / "web"
-WORLD_FILE = REPO_ROOT / "world" / "vault.json"
-TILES_FILE = REPO_ROOT / "world" / "tiles.json"
 
 
 class Game:
@@ -21,15 +22,19 @@ class Game:
         self.cfg = cfg
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
+        self.ledger = Ledger(cfg)
+        self.ticker = Ticker(cfg, self.brain)
+        self.layout = World(cfg.state_dir)
 
     def world(self) -> dict:
-        world = json.loads(WORLD_FILE.read_text(encoding="utf-8"))
-        world.update(json.loads(TILES_FILE.read_text(encoding="utf-8")))
+        world = self.layout.load()  # the repo's map plus Tally's own changes
         world["shelves"] = vault_shelves(self.cfg)
         world["status"] = {
             "brain": self.brain.name,
             "core_loaded": self.persona.loaded,
             "core_missing": self.persona.missing,
+            "writes": self.cfg.writes_mode,
+            "tick_minutes": self.cfg.tick_minutes,
         }
         return world
 
@@ -42,17 +47,29 @@ def make_handler(game: Game):
         def log_message(self, fmt, *args):  # keep the terminal quiet
             pass
 
+        def end_headers(self):
+            # The game's files change when you pull; make the browser check for a newer copy
+            # every time instead of mixing cached old scripts with new ones.
+            self.send_header("Cache-Control", "no-cache")
+            super().end_headers()
+
         def _json(self, data, status=HTTPStatus.OK):
             body = json.dumps(data).encode()
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page went away (reload, closed tab) before the answer
 
         def do_GET(self):
             if self.path == "/api/world":
                 return self._json(game.world())
+            if self.path == "/api/pending":
+                return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
+                                   "size": game.ledger.size_report(for_tally=False)})
             return super().do_GET()
 
         def do_POST(self):
@@ -62,6 +79,28 @@ def make_handler(game: Game):
             if self.path == "/api/reset":
                 game.brain.reset()
                 return self._json({"ok": True})
+
+            if self.path == "/api/tick":
+                if game.cfg.tick_minutes <= 0:
+                    return self._json({"go": "stay", "at": None, "say": "", "skipped": "off"})
+                result = game.ticker.tick(game.world(), payload)
+                if result.get("error"):
+                    print(f"  tick failed: {result['error']}")
+                return self._json(result)
+
+            if self.path.startswith("/api/pending/"):
+                parts = self.path.split("/")  # ["", "api", "pending", id, action]
+                if len(parts) != 5 or parts[4] not in ("approve", "reject"):
+                    return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                try:
+                    if parts[4] == "approve":
+                        msg = game.ledger.approve(parts[3])
+                    else:
+                        game.ledger.reject(parts[3])
+                        msg = "Rejected. Nothing was written."
+                except LedgerError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.CONFLICT)
+                return self._json({"ok": True, "message": msg})
 
             if self.path != "/api/talk":
                 return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -77,8 +116,17 @@ def make_handler(game: Game):
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
+            layout_before = game.layout.version()
+            game.layout.take_intent()  # an old intent from a reply that never finished does not count
             try:
                 for event in game.brain.talk(text):
+                    if event.get("type") == "done":
+                        # Tally's tools said where to be, or changed the room: tell the game before closing.
+                        intent = game.layout.take_intent()
+                        if intent:
+                            self.wfile.write(f"data: {json.dumps({'type': 'intent', **intent})}\n\n".encode())
+                        if game.layout.version() != layout_before:
+                            self.wfile.write(f"data: {json.dumps({'type': 'world'})}\n\n".encode())
                     self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
@@ -104,6 +152,14 @@ def main() -> None:
     else:
         print(f"  WARNING: Tally's core is incomplete. Missing: {', '.join(p.missing)}")
         print("  Set tally.core_dir in config.toml (copy config.example.toml).")
+    modes = {"off": "off (read-only)", "review": ("review (note changes wait for you in the game; soul.md is Tally's own)" if cfg.soul_direct
+                       else "review (every change waits for you in the game)"),
+             "direct": "direct (soul.md at once; note changes wait for you)"}
+    print(f"  writing: {modes.get(cfg.writes_mode, cfg.writes_mode)}")
+    if cfg.tick_minutes > 0:
+        print(f"  tick: Tally decides where to go every {cfg.tick_minutes:g} min ({cfg.tick_model or 'default model'})")
+    else:
+        print("  tick: off")
     url = f"http://{cfg.host}:{cfg.port}/"
     server = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(game))
     print(f"  open {url}  (Ctrl+C to leave)")

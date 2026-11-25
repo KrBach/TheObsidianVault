@@ -16,6 +16,17 @@
     <main>
       <section id="view">
         <canvas id="map"></canvas>
+        <div id="hover"></div>
+        <div id="review" hidden>
+          <div class="review-head"><span id="review-title"></span><button type="button" id="review-close" title="Close (Esc)">×</button></div>
+          <div id="review-why" class="dim"></div>
+          <pre id="review-diff"></pre>
+          <div class="review-foot">
+            <span id="review-msg" class="warn"></span>
+            <button type="button" id="review-reject">Reject</button>
+            <button type="button" id="review-approve" class="primary">Approve and write</button>
+          </div>
+        </div>
       </section>
 
       <aside id="side">
@@ -28,24 +39,55 @@
           <div class="label">NEARBY</div>
           <div id="nearby"></div>
         </div>
+        <div class="panel" id="ledger" hidden>
+          <div class="label">LEDGER <span id="ledger-count" class="count"></span></div>
+          <div id="ledger-list"></div>
+          <div id="ledger-size" class="dim small"></div>
+        </div>
         <div class="panel keys">
           <div class="label">KEYS</div>
-          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> move</div>
-          <div><b>t</b> or bump Tally: talk</div>
+          <div><b>click</b> to walk, click Tally to talk</div>
+          <div><b>arrows</b> / <b>wasd</b> / <b>hjkl</b> step</div>
+          <div><b>t</b> talk when next to Tally</div>
+          <div><b>v</b> view: <span id="view-name"></span>, <b>wheel</b> zoom</div>
           <div><b>esc</b> stop talking</div>
           <div><b>n</b> new conversation</div>
+          <div><b>bell</b> in the hall: click to call Tally</div>
         </div>
       </aside>
     </main>
 
     <section id="bottom">
-      <div id="log"></div>
+      <div id="dialogue">
+        <figure class="portrait" id="portrait-tally"><div class="art"></div><figcaption class="name"></figcaption></figure>
+        <div id="log"></div>
+        <figure class="portrait" id="portrait-player"><div class="art"></div><figcaption class="name"></figcaption></figure>
+      </div>
       <form id="talk" hidden>
         <span class="prompt">Kristian&gt;</span>
         <input id="say" autocomplete="off" spellcheck="true" placeholder="Say something to Tally (Esc to step away)">
       </form>
     </section>
   </div>
+  <div id="fatal" hidden></div>
+  <script>
+    // If the game's scripts fail to load or crash, say so on the page instead of showing nothing.
+    function vaultFatal(msg) {
+      var el = document.getElementById("fatal");
+      el.hidden = false;
+      el.textContent = "The vault could not start: " + msg +
+        "\nTry a hard reload (Cmd+Shift+R). If it stays, copy this message or the red lines from the browser console and send them over.";
+    }
+    window.addEventListener("error", function (e) {
+      if (!window.vault) vaultFatal((e.message || "a script failed to load") + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : ""));
+    }, true);
+    window.addEventListener("unhandledrejection", function (e) {
+      if (!window.vault) vaultFatal(String(e.reason && e.reason.message || e.reason));
+    });
+    setTimeout(function () {
+      if (!window.vault && document.getElementById("fatal").hidden) vaultFatal("the game's scripts did not run (a module may have failed to load)");
+    }, 6000);
+  </script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 # The Obsidian Vault
 
-A small ASCII game about an Obsidian vault drawn as a place. You walk in as `@`, past shelves that are the vault's theme folders, and talk to **Tally**, who keeps the ledger at the desk in the Hearth. Tally's replies come from Claude.
+A small isometric game (with an ASCII view as a fallback) about an Obsidian vault drawn as a place. You walk in, past shelves that are the vault's theme folders, and talk to **Tally**, who keeps the ledger at the desk in the Hearth. Tally's replies come from Claude.
 
 ```
 ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
@@ -13,7 +13,7 @@ A small ASCII game about an Obsidian vault drawn as a place. You walk in as `@`,
 
 ## Tally is the same Tally everywhere
 
-Tally's identity is not defined in this repo. At startup the game reads the shared core (`bootstrap.md` and `soul.md`) from your own vault, then adds a thin context layer for this game ([context/the-vault-game.md](context/the-vault-game.md)): where Tally is, how long replies should be, and that this session is read-only. Nothing from the vault is copied into the repo, and the game never writes to the vault.
+Tally's identity is not defined in this repo. At startup the game reads the shared core (`bootstrap.md` and `soul.md`) from your own vault, then adds a thin context layer for this game ([context/the-vault-game.md](context/the-vault-game.md)): where Tally is and how long replies should be. Nothing from the vault is copied into the repo. The game writes to the vault only through the ledger (below), and only after you approve, unless you choose otherwise.
 
 ## Run it
 
@@ -30,30 +30,76 @@ It opens http://127.0.0.1:8765 in your browser. `config.toml` is git-ignored, so
 
 Set `brain.kind` in `config.toml`:
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally gets only read-only tools (`Read`, `Glob`, `Grep`) and runs in the vault folder, so she can look at notes when you ask but cannot change anything. If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in `config.toml` as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `TALLY_CORE_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`.
 
+## Writing to the vault
+
+With the Claude Code brain, Tally gets a few vault tools from a small built-in MCP server (`obsidian_vault/vault_mcp.py`, no packages needed). They follow the rules in your `bootstrap.md`:
+
+- **append_interaction_log**: one new line at the end of the "Interaction log" in `soul.md`, timestamped (Europe/Copenhagen) and starting `Project: The Obsidian Vault · Theme: ...`. The file is re-read just before the line is added, and nothing around it is rewritten.
+- **add_coaching_item**: one new line under "For the coaching thread" in `soul.md`.
+- **propose_edit**: replace one exact passage in a note in a theme folder.
+- **propose_note**: create a new note in a theme folder.
+- **vault_size**: how big `bootstrap.md` + `soul.md` are against the 35 KB guide.
+
+Set `writes.mode` in `config.toml`:
+
+| mode | what happens |
+| --- | --- |
+| `review` (default) | every change waits for you in the **ledger** panel; click one to see the diff, then approve or reject |
+| `direct` | log and coaching lines are written at once; note edits and new notes still wait for you |
+| `off` | nothing is written; Tally is told the session is read-only |
+
+Rules that always hold: only `.md` files inside the vault; never `bootstrap.md`, `archive/`, `templates/` or hidden folders such as `.obsidian/`; note changes only in the folders listed in `writes.folders`. An edit is applied only if the note has not changed since Tally proposed it. Every write keeps a backup of the old file in `.vault-state/backups/` and a line in `.vault-state/journal.jsonl`, so it can be undone by hand. `.vault-state/` is git-ignored. The API brain cannot write.
+
+soul.md is Tally's own: interaction-log lines, coaching items and `edit_soul` changes are written at once (with a backup) in both review and direct mode. Set `soul_direct = false` under `[writes]` to review those too. Note edits and new notes in the theme folders always wait for you.
+
+Tests (against a made-up vault in a temp folder): `python3 -m unittest discover -s tests`.
+
 ## Controls
 
-| Key | Action |
+| Input | Action |
 | --- | --- |
-| arrows, `wasd`, `hjkl` | move (`yubn` and Home/PgUp/End/PgDn for diagonals) |
-| `t`, Enter, or walk into Tally | talk |
+| click | walk there; click Tally to walk up and talk, click a shelf to read its label |
+| arrows, `wasd`, `hjkl` | one step along the floor grid (in the isometric view these follow the floor's diagonals) |
+| `t` or Enter | talk, when next to Tally |
 | Esc | step away from the desk |
+| `v` | switch between the isometric and the ASCII view |
+| mouse wheel | zoom (isometric view) |
 | `n` | start a new conversation |
+| the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
 The conversation lives in the server, so reloading the page keeps it. Restart the server or press `n` for a fresh one.
 
-## Adding sprites
+## Art
 
-Everything on the map is a named tile (`wall`, `shelf`, `desk`, `pool`...) defined in [world/tiles.json](world/tiles.json). The renderer draws a tile's sprite when it has one and its glyph otherwise, so sprites can be added one tile at a time:
+There are two views of the same map. The **isometric view** is the main one: moody and lit by braziers and candles, with walls in front of you cut down so you can always see yourself. The **ASCII view** stays as a fallback. Both draw every tile by name from [world/tiles.json](world/tiles.json).
 
-1. Put images under `web/sprites/`.
-2. Either point `sprites.sheet` at a sprite sheet (`"sprites/vault.png"`, with `sprites.cell` as the cell size in pixels) and give tiles `"sprite": [col, row]`, or give a tile its own image: `"sprite": "sprites/tally.png"`.
+Underneath both is an invisible tile grid. It handles walking, clicking, depth order and the map check. Art sits on top of it, so it doesn't have to fit the grid:
 
-Creatures (`player`, `tally`) work the same way. The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name.
+- **Sprites of any size.** Give a tile or creature `"iso": {"sprite": "sprites/tally.png"}`. The sprite's anchor (by default its bottom centre, the feet) is placed on the tile. Set `anchor: [x, y]` (in pixels inside the image) to move that point, and `scale` to resize. A tall shelf or a big character just reaches higher up the screen. Things are drawn back to front by grid position, so you can walk behind them.
+- **Painted backdrops.** Add `backdrops` to [world/vault.json](world/vault.json): `{"image": "backdrops/hearth.png", "cells": [18, 0, 17, 9], "at": [-320, -120]}`. Inside `cells`, tiles marked `painted` (floors, walls) aren't drawn, and the image shows instead. `at` is where the image's top-left corner goes, in pixels from the centre of tile 0,0. Props and characters stay separate sprites on top.
+- **Placeholders.** Until a sprite exists, the `iso` block draws a lit placeholder shape (`shape`, `h`, `f`, `color`). Anything with a `light` gives off light.
+- **Portraits.** While you talk, the talk box shows Tally's and Kristian's portraits, and the speaker's lights up. Set `creatures.tally.portrait.image` (and `player`) to an image of any size; it is fitted to the 120×150 frame (portrait 4:5 works best). Until then a placeholder bust is drawn. Add `videos` (mp4 or webm, muted and looping) per state, e.g. `"videos": {"thinking": ["portraits/think.mp4"], "speaking": ["portraits/talk-1.mp4", "portraits/talk-2.mp4"]}`; several clips for one state take turns, and the still shows the rest of the time. Clips cross-fade in and out over the still. To make a clip loop without a visible jump (and shrink it), run `python3 -m obsidian_vault.loop_clip in.mp4 web/portraits/tally-think.mp4`; it needs ffmpeg and reports how different the first and last frames were before and after. Set `pixelated: true` for pixel-art portraits.
+- **Animations.** Tally has animation slots for two states: `thinking` (working on a reply, or reading notes) and `speaking` (the words are arriving). Fill `creatures.tally.iso.states.thinking` (map) or `creatures.tally.portrait.states.thinking` (talk box) with `"frames": ["sprites/tally-think-1.png", ...]` or a sprite sheet in a row (`"sheet": "sprites/tally-think.png", "frame": [96, 128], "count": 8`), plus `fps`. Until then a placeholder plays: the eyes in Tally's hood brighten and pulse and ink motes drift up; in the portrait the eyes drift as if reading.
+- **ASCII sprites.** The ASCII view takes `sprite` (a cell on `sprites.sheet`, or an image path) the same way.
+
+Put images under `web/` (for example `web/sprites/` and `web/backdrops/`); paths are relative to it.
+
+Tally doesn't stay at the desk: they walk between the posts listed in `tally_posts` in [world/vault.json](world/vault.json) (the desk, the Library, the Scriptorium, the Map Room), linger at each, and stay put while you are close or walking up to talk.
+
+Every few minutes (`tally.tick_minutes`, default 6) the game also asks Tally whether they want to go somewhere or say something. The server tells Tally their coordinates, the room, what is near them, where you are and the last thing you said, and lists the named places in `spots` in [world/vault.json](world/vault.json) (the pool, the brazier, the map table, the Outbox and so on). Tally answers with a place or "stay" and an optional short line, which shows in the log, then walks there, even past you. Each tick is a separate small call ([obsidian_vault/tick.py](obsidian_vault/tick.py)) with no tools and no history, using a short sketch of Tally ([context/tally-tick.md](context/tally-tick.md)) instead of the whole core: about 4,000 tokens on Haiku (`tally.tick_model`), under a tenth of a cent. Ticks skip while you talk, while the tab is hidden, and after 30 minutes without input. Set `tick_minutes = 0` to turn them off.
+
+Tally always knows where they are and why. What they say and where they go are tied together by game tools in the conversation: `go_to` (a place, and why), `stay_here`, `walk_with_kristian` (Tally follows a step or two behind you) and `wander`. A choice like "I'll stay here a bit" holds until the next tick, which reminds Tally where they are and why and lets them keep it or change their mind; only a promise with minutes holds past a tick. Without ticks, a choice lapses after 20 minutes and Tally goes back to their round.
+
+## Tally arranges the vault
+
+The vault is Tally's to arrange. In conversation Tally can look at the map with coordinates (`look_at_map`), place or clear furniture (`place_furniture`, `clear_furniture`: candles, braziers, papers, pools, writing desks, map tables, graph nodes) and name new places to go (`name_place`). Every change goes through the same map check as the repo, so nothing can block a door or cut a room off; walls, doors, shelves and the desk are fixed. Tally's changes are kept in `.vault-state/world.json` (git-ignored, so a pull never overwrites them) and laid over `world/vault.json`; `.vault-state/world-journal.jsonl` lists every change. Delete `world.json` to put the vault back as built. New rooms are still built by hand in the repo for now.
+
+The map itself is plain text in [world/vault.json](world/vault.json); its `legend` maps each character to a tile name. After editing it, run `python3 -m obsidian_vault.check_map`. It checks that every floor tile and door can be reached with straight steps, that no door opens onto a dead end, that you can get within talking range of Tally, and that lamps which block movement (`"lamp": true` and `solid`) stand against a wall. Run it before you commit a map change.
 
 ## Layout
 
@@ -61,5 +107,5 @@ Creatures (`player`, `tally`) work the same way. The map itself is plain text in
 obsidian_vault/   Python: config, persona loading, brains (Claude Code / API), web server
 context/          the game's context layer for Tally
 world/            map, rooms and tile definitions
-web/              the browser client (canvas renderer, input, chat)
+web/              the browser client: iso.js (isometric), renderer.js (ASCII), main.js (input, walking), talk.js
 ```
