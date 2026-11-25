@@ -10,6 +10,11 @@ for OWNER, a guest and Tally: OWNER clicks, Tally uses the tend_cat tool or a ti
 one-line emote for the talk box and an effect the browser plays out. Tally's own tending is queued
 here and handed to the browser when the reply ends.
 
+The cat also remembers how much it likes Tally and OWNER (affinity, kept in cat.json and fading
+slowly over days). Its odds for walking off from a pet, and for staying put when someone it likes
+walks towards it, are worked out here; the browser uses them and the affinity to weigh where it goes.
+Tally only ever reads it in words.
+
 The cat's name and look come from world/tiles.json (creatures.cat), not from code.
 """
 
@@ -29,6 +34,36 @@ ACTIONS = ("pet", "feed", "play", "call")
 GUEST_ACTIONS = ("pet", "call")
 CALL_REACH = 8  # steps: calling works across a room, everything else needs you next to the cat
 FOLLOW_SECONDS = 60
+
+# Affinity: how much the cat likes Tally and OWNER, 0 to 1. Tending that lands raises it (a meal most,
+# a game next, an accepted pet a little; a pet it walks off from adds nothing), and it fades over days
+# towards a floor, never to nothing. It only shifts the cat's odds; it never makes the cat obedient.
+FOND_OF = ("tally", "owner")  # guests are not remembered
+AFFINITY_FLOOR = 0.15
+AFFINITY_HALF_LIFE = 3 * 86400  # seconds for the part above the floor to halve
+AFFINITY_GAIN = {"fed": 0.15, "pounce": 0.08, "purr": 0.03}  # by the effect that actually happened
+WALK_OFF = 0.25  # odds a pet ends with it walking off, for someone it barely knows
+FONDNESS = ((0.3, "keeps a polite distance from"), (0.5, "is getting used to"),
+            (0.75, "seems fond of"), (1.01, "is very fond of"))
+
+
+def fondness(value: float) -> str:
+    """How the cat is with someone, in words (the numbers stay out of what Tally reads)."""
+    for limit, words in FONDNESS:
+        if value < limit:
+            return words
+    return FONDNESS[-1][1]
+
+
+def stay_odds(value: float) -> float:
+    """Odds the cat stays put when someone it likes is walking towards it, instead of wandering off.
+    Even at the most it sometimes goes anyway: it is a cat."""
+    return round(max(0.0, min(0.7, (value - AFFINITY_FLOOR) / (1 - AFFINITY_FLOOR) * 0.7)), 3)
+
+
+def walk_off_odds(value: float) -> float:
+    """Odds a pet ends with the cat walking off: lower for someone it likes, never zero."""
+    return round(WALK_OFF * (1 - 0.6 * max(0.0, min(1.0, value))), 3)
 
 
 class CatError(Exception):
@@ -90,7 +125,37 @@ class Cat:
                "hungry_in_minutes": 0 if hungry else round((fed + HUNGRY_AFTER - now) / 60), "name": self.name}
         if _cell(out) is None:
             out["x"] = out["y"] = None
+        aff = {who: self.affinity(who, data) for who in FOND_OF}
+        out["affinity"] = aff  # for the browser's odds; Tally reads the words
+        out["stay_odds"] = {who: stay_odds(v) for who, v in aff.items()}
+        out["fondness"] = {who: fondness(v) for who, v in aff.items()}
+        out["fondness_text"] = (f"{self.name} {out['fondness']['tally']} you, and {out['fondness']['owner']} OWNER.")
         return out
+
+    # ---------- affinity ----------
+
+    def affinity(self, who: str, data: dict | None = None) -> float:
+        """How much the cat likes who (tally or owner) now, faded from when it was last raised."""
+        all_ = (data if data is not None else self._load()).get("affinity")
+        rec = all_.get(who) if isinstance(all_, dict) else None
+        try:
+            value, at = float(rec["value"]), float(rec["at"])
+        except (KeyError, TypeError, ValueError):
+            return AFFINITY_FLOOR
+        value = max(AFFINITY_FLOOR, min(1.0, value))
+        days = max(0.0, self.clock() - at) / AFFINITY_HALF_LIFE
+        return round(AFFINITY_FLOOR + (value - AFFINITY_FLOOR) * 0.5 ** days, 4)
+
+    def _raise(self, who: str, effect: str) -> None:
+        gain = AFFINITY_GAIN.get(effect, 0)
+        if who not in FOND_OF or not gain:
+            return
+        data = self._load()
+        now = self.affinity(who, data)
+        if not isinstance(data.get("affinity"), dict):
+            data["affinity"] = {}
+        data["affinity"][who] = {"value": round(now + gain * (1 - now), 4), "at": self.clock()}
+        self._write(data)
 
     def save(self, rec: dict) -> dict:
         """The browser's report: where the cat is, its mood, whether it sleeps."""
@@ -143,7 +208,7 @@ class Cat:
         if action == "pet":
             if asleep:
                 res = {"text": f"{n} opens one eye, blinks slowly at you, and goes back to sleep.", "effect": "blink"}
-            elif self.rng() < 0.25:
+            elif self.rng() < (walk_off_odds(self.affinity(who)) if who in FOND_OF else WALK_OFF):
                 res = {"text": f"{n} purrs for a moment, then stands up mid-stroke and walks off, as cats do.", "effect": "walk_off"}
             else:
                 res = {"text": f"{n} purrs.", "effect": "purr"}
@@ -167,7 +232,10 @@ class Cat:
                 res = {"text": f"{n}'s ear twitches. It stays asleep.", "effect": "none"}
             else:
                 res = {"text": f"{n} heard you, and comes over slowly, as if it had been going that way anyway.", "effect": "come"}
-        res = {"ok": True, "action": action, "who": who, "at": list(me), **res}
+        self._raise(who, res["effect"])  # only tending that landed counts; a guest's is not remembered
+        now = self.get()
+        res = {"ok": True, "action": action, "who": who, "at": list(me), **res,
+               **{k: now[k] for k in ("affinity", "stay_odds", "fondness", "fondness_text")}}
         if queue:
             data = self._load()
             data["pending"] = (data.get("pending") or [])[-4:] + [res]
@@ -197,4 +265,4 @@ class Cat:
         if me:
             d = max(abs(me[0] - s["x"]), abs(me[1] - s["y"]))
             line += " It is right next to you." if d <= 1 else f" It is {d} steps from you."
-        return line
+        return line + " " + s["fondness_text"]

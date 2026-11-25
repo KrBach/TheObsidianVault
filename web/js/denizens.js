@@ -14,13 +14,20 @@
 //
 // The imp is the errand runner. When an errand starts it leaves the desk and runs out of the
 // vault; when the errand is done it comes back in with the report and pins it to the notice board.
+//
+// Brass, the Artificer, has a temporary body that follows the life of a code errand. The server
+// says which stage he is at (brass.py); this file walks him there. Queued: in by the front door to
+// stand beside Tally's desk. Rejected: back out of the front door. Approved: to the Outbox table,
+// tinkering while it runs. Done or failed: to the notice board, a pause, then out of the front door.
+// He never stands in or by a doorway, by the bell, on the welcome mat or on the cat's cushion, and
+// like the cat he blocks nobody.
 
 const STEPS4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const STEPS8 = [...STEPS4, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 const WARM = new Set(["brazier", "fireplace", "fireplace_side"]);
 const SOFT = { cushion: 6, hammock: 4, couch: 2 }; // where it likes to sleep, and how much
 const LIFT = { desk: 17, map_table: 13, hammock: 10, couch: 6, cushion: 3 }; // how high it sits on each
-const CAT_STEP_MS = 520, IMP_STEP_MS = 190;
+const CAT_STEP_MS = 520, IMP_STEP_MS = 190, BRASS_STEP_MS = 430, BOARD_PAUSE_MS = 5000;
 const HUNGRY_MS = 3 * 3600 * 1000;
 const S = 1000;
 
@@ -33,7 +40,7 @@ const CAT_LOOKS = [
 
 export function createDenizens(world, api) {
   const { tileAt, log, now = () => performance.now(), clock = () => Date.now(),
-          people = () => ({}), roomAt = () => null } = api;
+          people = () => ({}), roomAt = () => null, brassSeen = () => {} } = api;
   const def = world.creatures?.cat || {};
   const NAME = def.call || "the cat";
   const cell = tileAt;
@@ -91,23 +98,50 @@ export function createDenizens(world, api) {
   const cat = { kind: "cat", x: start0[0], y: start0[1], rx: start0[0], ry: start0[1], path: [], pace: CAT_STEP_MS,
                 nextStep: 0, restUntil: now() + 15 * S, mood: "sleepy", sleeping: false, batting: false,
                 perch: null, lift: 0, onDesk: false, goal: null, follow: null, come: null, hunger: null,
-                purrUntil: 0, pounceUntil: 0, fedAt: clock() };
+                purrUntil: 0, pounceUntil: 0, fedAt: clock(),
+                // how much it likes each of them (0 to 1) and its odds of staying when they come over:
+                // both from the server (cat.py), which keeps them. They shift its odds, never decide them.
+                affinity: { player: 0, tally: 0 }, stayOdds: { player: 0, tally: 0 }, fondness: {}, fondnessText: "" };
+  const guest = world.role && world.role !== "owner"; // a guest is not the one it knows
   const imp = { kind: "imp", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, job: null, nextStep: 0, carrying: false };
   const out = [];  // errands the imp is out on
   const back = []; // reports waiting to be brought in
 
   // Who came into a room last: the curious cat goes to have a look at them.
-  const lastRoom = {};
+  // And who is walking towards it: someone it likes coming over makes it less likely to wander off.
+  const lastRoom = {}, lastDist = {}, nearingUntil = {};
   let lastArrived = "player";
   function watchArrivals() {
-    const ppl = people();
+    const ppl = people(), t = now();
     for (const who of ["player", "tally"]) {
       const p = ppl[who];
       if (!p) continue;
       const r = roomAt(p.x, p.y)?.id || "";
       if (lastRoom[who] !== undefined && lastRoom[who] !== r) lastArrived = who;
       lastRoom[who] = r;
+      const d = dist([cat.x, cat.y], [p.x, p.y]);
+      if (lastDist[who] !== undefined && d < lastDist[who] && d <= 8) nearingUntil[who] = t + 4 * S;
+      lastDist[who] = d;
     }
+  }
+  const nearing = (who) => now() < (nearingUntil[who] || 0);
+
+  // Affinity from the server, for whoever it is about (owner is the player here).
+  function setAffinity(src) {
+    if (!src?.affinity) return;
+    const a = src.affinity, s = src.stay_odds || {};
+    cat.affinity = { player: guest ? 0 : +a.owner || 0, tally: +a.tally || 0 };
+    cat.stayOdds = { player: guest ? 0 : +s.owner || 0, tally: +s.tally || 0 };
+    cat.fondness = src.fondness || {};
+    cat.fondnessText = src.fondness_text || "";
+  }
+  // The one it likes most of those in the vault, if it likes them at all above a passing acquaintance.
+  function favourite() {
+    const ppl = people();
+    const here = ["player", "tally"].filter((w) => ppl[w]);
+    if (!here.length) return null;
+    const who = here.reduce((a, b) => (cat.affinity[b] > cat.affinity[a] ? b : a));
+    return cat.affinity[who] > 0.2 ? who : null;
   }
 
   // ---------- the cat ----------
@@ -123,10 +157,16 @@ export function createDenizens(world, api) {
   function places(mood) {
     const list = [], ppl = people();
     const spread = (cells, w, extra) => { for (const at of cells) list.push({ at, w: w / cells.length, ...extra }); };
+    const fav = favourite(), fond = fav ? cat.affinity[fav] : 0;
     if (mood === "sleepy") {
       spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, WARM)), 5, { sleep: true });
       for (const [kind, w] of Object.entries(SOFT)) spread(cellsWhere((x, y) => id(x, y) === kind && canSettle(x, y)), w, { sleep: true });
+      // near whoever it likes most (a weight among the others, not a rule) ...
+      if (fav) spread(around(ppl[fav].x, ppl[fav].y), 5 * fond, { sleep: true });
+      // ... and, once it is really fond of Tally, now and then curled up by Tally's place at the desk
+      if (cat.affinity.tally >= 0.6 && world.tally) spread(around(world.tally[0], world.tally[1]), 3 * cat.affinity.tally, { sleep: true });
     } else if (mood === "curious") {
+      if (fav) spread(around(ppl[fav].x, ppl[fav].y), 5 * fond, { watch: fav, fav: true });
       spread(cellsWhere((x, y) => canSettle(x, y) && by(x, y, new Set(["pool"]), STEPS4)), 3, {});
       const who = ppl[lastArrived];
       if (who) spread(around(who.x, who.y), 4, { watch: lastArrived });
@@ -199,6 +239,9 @@ export function createDenizens(world, api) {
     cat.batting = !!g.bat;
     cat.restUntil = t + (g.desk ? 60 * S : g.hungry ? 120 * S : cat.sleeping ? span(90, 210)
       : cat.batting ? span(15, 35) : span(25, 60));
+    // went to look at someone it is very fond of: sometimes it tags along for a few steps
+    const fond = g.fav ? cat.affinity[g.watch] || 0 : 0;
+    if (fond >= 0.6 && Math.random() < 0.3 * fond) cat.follow = { who: g.watch, until: clock() + span(12, 30) };
   }
 
   function catStep(t, busy) {
@@ -237,6 +280,11 @@ export function createDenizens(world, api) {
     }
     if (t < cat.restUntil) return;
     if (cat.perch === "desk" && busy) { cat.restUntil = t + 30 * S; return; } // still busy: stay on the ledger
+    // someone it likes is coming over: it may wait for them (the odds are cat.py's, never certain)
+    const coming = ["player", "tally"].filter(nearing);
+    if (coming.length && cat.mood !== "hungry" && Math.random() < Math.max(...coming.map((w) => cat.stayOdds[w] || 0))) {
+      cat.restUntil = t + span(10, 25); return;
+    }
     const woke = cat.sleeping;
     leavePerch();
     cat.sleeping = false; cat.batting = false;
@@ -247,6 +295,7 @@ export function createDenizens(world, api) {
   // What the server said happened when someone tended the cat (cat.py), played out here.
   function apply(res, who) {
     if (!res?.ok) return;
+    setAffinity(res.cat?.affinity ? res.cat : res);
     const t = now();
     if (res.cat?.fed_at) cat.fedAt = res.cat.fed_at * 1000;
     switch (res.effect) {
@@ -302,6 +351,7 @@ export function createDenizens(world, api) {
 
   function restore(saved) {
     if (saved?.fed_at) cat.fedAt = saved.fed_at * 1000;
+    setAffinity(saved);
     if (!saved || saved.x == null || !canSettle(saved.x, saved.y)) return false;
     cat.x = cat.rx = saved.x; cat.y = cat.ry = saved.y;
     cat.mood = saved.mood || "sleepy";
@@ -376,18 +426,137 @@ export function createDenizens(world, api) {
     if (imp.alpha <= 0) { imp.hidden = true; imp.job = null; }
   }
 
+  // ---------- Brass, the Artificer ----------
+
+  const brass = { kind: "brass", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, nextStep: 0,
+                  want: { present: false }, goal: null, arrived: false, pauseUntil: 0, tinker: false,
+                  pinned: "", told: new Set() };
+  // where he may stand: not by a door, the bell, the mat or the way in (as for the cat), nor on its cushion
+  const brassOk = (x, y) => open(x, y) && !forbidden(x, y) && id(x, y) !== "cushion";
+  const stationOf = (goal) => (world.brass || {})[goal];
+  function standCell(goal) {
+    if (goal === "door") return open(...world.exit) ? world.exit : exitIn();
+    const a = stationOf(goal);
+    if (!a) return null;
+    if (brassOk(a[0], a[1])) return a;
+    // the anchor is taken (Tally may have put the Outbox table right there): the nearest good cell beside it
+    for (let r = 1; r <= 3; r++) {
+      const ring = [];
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) === r && brassOk(a[0] + dx, a[1] + dy)) ring.push([a[0] + dx, a[1] + dy]);
+      }
+      ring.sort((p, q) => (Math.abs(p[0] - a[0]) + Math.abs(p[1] - a[1])) - (Math.abs(q[0] - a[0]) + Math.abs(q[1] - a[1])));
+      if (ring.length) return ring[0];
+    }
+    return null;
+  }
+  const seenOnce = (eid) => { if (eid && !brass.told.has(eid)) { brass.told.add(eid); brassSeen(eid); } };
+  // where he is going: the stage's place, or after pinning a report, wherever the server says is next
+  function brassGoal() {
+    const w = brass.want;
+    if (!w?.present) return "door";
+    if (w.stage === "reporting" && brass.pinned === w.errand) return w.then || "door";
+    return w.goes;
+  }
+
+  function brassArrive(goal, t) {
+    const w = brass.want, title = w?.title || "an errand";
+    brass.tinker = goal === "outbox";
+    if (goal === "desk") log(`Brass sets his toolbox down beside Tally's desk and waits for you to look at "${title}" in the ledger.`, "action");
+    else if (goal === "outbox") log(`Brass spreads his tools on the Outbox table and gets to work on "${title}".`, "action");
+    else if (goal === "board") {
+      log(`Brass pins a note to the notice board: "${title}" ${w.outcome === "failed" ? "failed" : "is done"}.`, "action");
+      brass.pauseUntil = t + BOARD_PAUSE_MS;
+    } else if (goal === "door") log("Brass tips his goggles to nobody in particular and goes out by the front door.", "action");
+  }
+
+  function brassStep(t) {
+    const w = brass.want;
+    if (brass.hidden) {
+      if (!w?.present) return;
+      if (w.stage === "leaving") { seenOnce(w.errand); return; } // a rejection nobody saw him for: nothing to walk
+      if (w.stage === "reporting" && brass.told.has(w.errand)) return;
+      [brass.x, brass.y] = world.exit; brass.rx = brass.x; brass.ry = brass.y;
+      brass.hidden = false; brass.alpha = 0; brass.goal = null; brass.arrived = false; brass.tinker = false;
+      log(w.stage === "reporting"
+        ? `The front door opens and Brass, the Artificer, stumps in with the report on "${w.title}".`
+        : `The front door opens and Brass, the Artificer, stumps in with his toolbox, about "${w.title}".`, "action");
+    }
+    const goal = brassGoal();
+    if (goal !== brass.goal) {
+      if (goal === "door" && w?.stage === "leaving" && brass.goal === "desk") log("Brass shrugs at the rejected brief and picks up his toolbox.", "action");
+      brass.goal = goal; brass.arrived = false; brass.tinker = false;
+      const to = standCell(goal);
+      brass.path = (to && bfs([brass.x, brass.y], [to], open)) || [];
+    }
+    if (brass.path.length) {
+      brass.alpha = Math.min(1, brass.alpha + 0.1);
+      if (t < brass.nextStep) return;
+      brass.nextStep = t + BRASS_STEP_MS;
+      [brass.x, brass.y] = brass.path.shift();
+      return;
+    }
+    if (!brass.arrived) { brass.arrived = true; brassArrive(goal, t); }
+    if (goal === "door") {
+      brass.alpha -= 0.06;
+      if (brass.alpha <= 0) {
+        brass.hidden = true; brass.goal = null; brass.tinker = false;
+        if (w?.present && (w.stage === "leaving" || w.stage === "reporting")) seenOnce(w.errand);
+      }
+      return;
+    }
+    brass.alpha = Math.min(1, brass.alpha + 0.1);
+    if (goal === "board" && w?.stage === "reporting" && brass.pinned !== w.errand && t >= brass.pauseUntil) {
+      brass.pinned = w.errand; // walks on at once; the server hears it and says what is next
+      seenOnce(w.errand);
+    }
+  }
+
+  // The server's word on where he should be (brass.py), from the poll.
+  function brassSet(st) { brass.want = st || { present: false }; }
+
+  // At boot: an errand waiting or running puts him straight back where he was, with no walk in.
+  function brassRestore(st) {
+    brassSet(st);
+    if (!st?.present || !["waiting", "working"].includes(st.stage)) return false;
+    const at = standCell(st.goes);
+    if (!at) return false;
+    [brass.x, brass.y] = at; brass.rx = brass.x; brass.ry = brass.y;
+    brass.hidden = false; brass.alpha = 1; brass.goal = st.goes; brass.arrived = true; brass.tinker = st.goes === "outbox";
+    return true;
+  }
+
+  // For Tally's game_state: one short phrase, only while he is in.
+  function brassText() {
+    if (brass.hidden) return "";
+    const w = brass.want;
+    if (brass.goal === "door" || !w?.present) return "Brass is leaving by the front door.";
+    if (brass.pinned === w.errand) return "Brass has pinned his report and is moving on.";
+    return (brass.arrived ? w.say : w.going) || "";
+  }
+
   return {
     cat,
     imp,
     name: NAME,
-    entities() { return imp.hidden ? [cat] : [cat, imp]; },
-    tick(busy) { const t = now(); catStep(t, busy); impStep(t); },
+    brass,
+    entities() { return [cat, ...(imp.hidden ? [] : [imp]), ...(brass.hidden ? [] : [brass])]; },
+    tick(busy) { const t = now(); catStep(t, busy); impStep(t); brassStep(t); },
     errandOut(e) { out.push(e); },
     errandBack(e) { back.push(e); },
+    brassSet,
+    brassRestore,
+    brassText,
     at(x, y) {
       if (cat.x === x && cat.y === y) return "cat";
       if (!imp.hidden && imp.x === x && imp.y === y) return "imp";
+      if (!brass.hidden && brass.x === x && brass.y === y) return "brass";
       return "";
+    },
+    lookAtBrass() {
+      const d = world.creatures?.brass?.desc || "Brass, the Artificer.";
+      const t = brassText();
+      log(`${d}${t ? ` ${t}` : ""}`);
     },
     apply,
     snapshot,
@@ -399,8 +568,11 @@ export function createDenizens(world, api) {
     around: () => around(cat.x, cat.y, open),
     lookAtCat() {
       const where = whereWord();
-      log(`${def.desc || NAME} It is ${doingWord()}${where ? `, ${where}` : ""}. ${pick(CAT_LOOKS)}`);
+      const fond = !guest && cat.fondness.owner ? ` It ${cat.fondness.owner} you.` : "";
+      log(`${def.desc || NAME} It is ${doingWord()}${where ? `, ${where}` : ""}. ${pick(CAT_LOOKS)}${fond}`);
     },
+    // how it is with Tally and OWNER, in words, for Tally's game_state
+    fondnessText: () => cat.fondnessText,
     lookAtImp() {
       log(imp.carrying ? "A small soot-coloured imp with a rolled-up report under one arm. It is in a hurry." : "A small soot-coloured imp, the vault's errand runner. It is in a hurry.");
     },

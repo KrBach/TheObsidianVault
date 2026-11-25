@@ -3,7 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from obsidian_vault.cat import HUNGRY_AFTER, Cat, CatError
+from obsidian_vault.cat import (AFFINITY_FLOOR, AFFINITY_HALF_LIFE, HUNGRY_AFTER, Cat, CatError, fondness,
+                                stay_odds, walk_off_odds)
 from obsidian_vault.tick import build_prompt, parse
 from obsidian_vault.vault_mcp import call_game
 from obsidian_vault.world import World
@@ -90,6 +91,86 @@ class CatTest(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         self.assertEqual(pending[0]["who"], "tally")
         self.assertEqual(Cat(self.dir).take_pending(), [])
+
+    # ---------- affinity ----------
+
+    def test_affinity_starts_at_the_floor_and_rises_most_for_a_meal(self):
+        self.assertEqual(self.cat.affinity("tally"), AFFINITY_FLOOR)
+        self.assertEqual(self.cat.affinity("owner"), AFFINITY_FLOOR)
+        self.cat.tend("owner", "feed", [10, 6])
+        fed = self.cat.affinity("owner")
+        self.assertEqual(self.cat.affinity("tally"), AFFINITY_FLOOR)  # one person each
+        other = Cat(Path(tempfile.mkdtemp()), rng=lambda: 0.9, clock=self.clock)
+        other.save({"x": 10, "y": 5, "mood": "playful"})
+        other.tend("owner", "play", [10, 6])
+        played = other.affinity("owner")
+        third = Cat(Path(tempfile.mkdtemp()), rng=lambda: 0.9, clock=self.clock)
+        third.save({"x": 10, "y": 5, "mood": "sleepy"})
+        third.tend("owner", "pet", [10, 6])
+        petted = third.affinity("owner")
+        self.assertGreater(fed, played)
+        self.assertGreater(played, petted)
+        self.assertGreater(petted, AFFINITY_FLOOR)
+
+    def test_tending_that_does_not_land_adds_nothing(self):
+        self.roll = 0.01  # the pet ends with it walking off
+        self.assertEqual(self.cat.tend("tally", "pet", [10, 6])["effect"], "walk_off")
+        self.assertEqual(self.cat.tend("tally", "play", [10, 6])["effect"], "ignore")  # not playful
+        self.cat.tend("tally", "call", [10, 6])
+        self.assertFalse(self.cat.tend("tally", "feed", [30, 6])["ok"])  # too far off
+        self.assertEqual(self.cat.affinity("tally"), AFFINITY_FLOOR)
+
+    def test_guests_are_not_remembered(self):
+        self.cat.tend("guest", "pet", [10, 6])
+        self.assertNotIn("guest", self.cat.get()["affinity"])
+        self.assertNotIn("affinity", json.loads((self.dir / "cat.json").read_text()))
+
+    def test_affinity_fades_slowly_to_a_floor_never_to_zero(self):
+        for _ in range(6):
+            self.cat.tend("tally", "feed", [10, 6])
+        high = self.cat.affinity("tally")
+        self.clock.t += 3600
+        self.assertAlmostEqual(self.cat.affinity("tally"), high, delta=0.01)  # an hour is nothing
+        self.clock.t += AFFINITY_HALF_LIFE - 3600
+        self.assertAlmostEqual(self.cat.affinity("tally") - AFFINITY_FLOOR, (high - AFFINITY_FLOOR) / 2, places=3)
+        self.clock.t += 365 * 86400
+        self.assertEqual(self.cat.affinity("tally"), AFFINITY_FLOOR)
+        self.assertGreater(AFFINITY_FLOOR, 0)
+
+    def test_affinity_is_kept_with_the_cat_and_survives_the_browser_saving(self):
+        self.cat.tend("tally", "feed", [10, 6])
+        before = self.cat.affinity("tally")
+        self.cat.save({"x": 12, "y": 5, "mood": "curious"})  # the browser's regular report
+        again = Cat(self.dir, clock=self.clock)
+        self.assertEqual(again.affinity("tally"), before)
+        self.assertEqual(again.get()["affinity"]["tally"], before)
+
+    def test_high_affinity_makes_it_likelier_to_wait_when_approached(self):
+        self.assertEqual(stay_odds(AFFINITY_FLOOR), 0)
+        self.assertGreater(stay_odds(0.9), stay_odds(0.5))
+        self.assertLess(stay_odds(1.0), 1)  # never obedient
+        self.assertLess(walk_off_odds(0.9), walk_off_odds(AFFINITY_FLOOR))
+        self.assertGreater(walk_off_odds(1.0), 0)
+        for _ in range(12):
+            self.cat.tend("owner", "feed", [10, 6])
+        s = self.cat.get()
+        self.assertGreater(s["stay_odds"]["owner"], s["stay_odds"]["tally"])
+        # a pet roll that would send it off for a stranger keeps it purring for someone it likes
+        self.roll = 0.2
+        self.cat.save({"x": 10, "y": 5, "mood": "sleepy", "asleep": False})
+        self.assertEqual(self.cat.tend("owner", "pet", [10, 6])["effect"], "purr")
+        self.assertEqual(self.cat.tend("tally", "pet", [10, 6])["effect"], "walk_off")
+
+    def test_tally_reads_affinity_in_words_not_numbers(self):
+        for _ in range(12):
+            self.cat.tend("tally", "feed", [10, 6])
+        line = self.cat.for_prompt({"x": 11, "y": 5})
+        self.assertIn("Vellum is very fond of you", line)
+        self.assertIn("keeps a polite distance from OWNER", line)
+        self.assertNotRegex(self.cat.get()["fondness_text"], r"\d")
+        self.assertEqual(fondness(0.6), "seems fond of")
+        res = self.cat.tend("tally", "pet", [10, 6], queue=True)
+        self.assertIn("fondness_text", res)  # the browser learns of it with Tally's tending
 
     def test_the_tick_sees_the_cat_and_may_tend_it(self):
         world = {"spots": [], "rooms": [], "map": [], "legend": {}, "tiles": {}}

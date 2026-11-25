@@ -64,6 +64,7 @@
   26,
   3
  ],
+ "brass": {"door": [26, 14], "desk": [28, 4], "outbox": [42, 12], "board": [20, 12]},
  "rooms": [
   {
    "id": "library",
