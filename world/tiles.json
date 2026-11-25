@@ -606,6 +606,10 @@
         "eyes": "#e0a030",
         "paw": "#e8e2d6",
         "tip": "#141218"
+      },
+      "portrait": {
+        "image": "portraits/vellum.jpg",
+        "frame": "#c08a40"
       }
     },
     "imp": {
