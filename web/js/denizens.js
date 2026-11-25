@@ -439,7 +439,7 @@ export function createDenizens(world, api) {
   const stationOf = (goal) => (world.brass || {})[goal];
   // Between jobs he lives in the vault and potters about (scripted, no model calls): the Outbox
   // table, a brazier, the pool's edge, the map table, a reading chair. Earned autonomy can come later.
-  const WARM_B = new Set(["brazier", "fireplace", "fireplace_side"]), BY_B = new Set(["pool", "map_table", "shelf", "archive_shelf", "scribe_desk"]);
+  const WARM_B = new Set(["brazier", "fireplace", "fireplace_side"]), BY_B = new Set(["pool", "map_table", "shelf", "archive_shelf", "scribe_desk", "bed"]);
   function wanderSpots() {
     const out = [];
     const ob = stationOf("outbox");
