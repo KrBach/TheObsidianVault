@@ -532,7 +532,7 @@ function catText() {
   const d = state.denizens, c = d?.cat;
   if (!c) return "";
   const r = roomAt(c.x, c.y), where = d.whereWord();
-  const steps = Math.max(Math.abs(c.x - state.tally.x), Math.abs(c.y - state.tally.y));
+  const steps = Math.max(Math.abs(c.x - state.tally.x), Math.abs(c.y - state.tally.y)); // the same rule as steps() in cat.py
   return ` ${d.name}, the vault cat, is ${d.doingWord()}${where ? `, ${where}` : ""}, in ${r ? r.name : "the vault"} at (${c.x},${c.y}),` +
     (steps <= 1 ? " right next to you (you can tend it with tend_cat)." : ` ${steps} steps from you.`) +
     (d.hungry() ? " It has not been fed for over three hours." : "") +
@@ -577,6 +577,11 @@ function openCat() {
   bottom.classList.add("talking", "with-cat");
   catActions.hidden = false;
   for (const b of catActions.querySelectorAll(".owner-only")) b.hidden = isGuest();
+  // the talk line is open too, for the text parser: "> pet vellum" (vellum.py, no model)
+  state.tallyPlaceholder ||= input.placeholder;
+  input.placeholder = "> look, > pet, > feed… (a line starting with > is for the cat; Esc to leave)";
+  form.hidden = false;
+  input.focus();
   portraits?.player.setSpeaking(false);
   portraits?.cat?.setSpeaking(true);
 }
@@ -584,7 +589,8 @@ function closeCat(quiet = false) {
   if (!state.withCat) return;
   state.withCat = false;
   bottom.classList.remove("with-cat");
-  if (!state.talking) bottom.classList.remove("talking");
+  if (!state.talking) { bottom.classList.remove("talking"); form.hidden = true; input.blur(); }
+  if (state.tallyPlaceholder && state.talkTo !== "brass") input.placeholder = state.tallyPlaceholder;
   catActions.hidden = true;
   portraits?.cat?.setSpeaking(false);
   if (!quiet) log(`You leave ${state.denizens.name} to it.`, "action");
@@ -629,6 +635,29 @@ async function tendCat(action, walked = false) {
     });
     res = await r.json();
     if (!r.ok) return log(res.error || "The cat is not to be tended just now.", "err");
+  } catch (e) {
+    return log(`Lost the connection to the vault: ${e.message}`, "err");
+  }
+  log(res.text, "action");
+  d.apply(res, "player");
+  saveCat();
+}
+
+// The text parser: a talk-box line starting with ">" goes here, never to Tally, Brass or any model.
+// The server (vellum.py) has the words and the rules: in range (two tiles), verb + object, the answer
+// by mood and how much the cat likes you, and the same effects as the buttons.
+async function catLine(text) {
+  const d = state.denizens, p = state.player;
+  logLine(who(), "you").textContent = text;
+  if (!d?.cat) return log("There is no cat here.");
+  let res;
+  try {
+    const r = await fetch("/api/cat/parse", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, at: [p.x, p.y], cat: d.snapshot() }),
+    });
+    res = await r.json();
+    if (!r.ok) return log(res.error || "The cat is not listening just now.", "err");
   } catch (e) {
     return log(`Lost the connection to the vault: ${e.message}`, "err");
   }
@@ -1199,6 +1228,10 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); stopTalking(); }
     return; // typing goes to the input
   }
+  if (state.withCat && document.activeElement === input) {
+    if (e.key === "Escape") { e.preventDefault(); closeCat(); }
+    return; // typing a "> ..." line for the cat
+  }
   if (state.withCat && e.key === "Escape") { e.preventDefault(); return closeCat(); }
   if (e.key === "t" || e.key === "Enter") { e.preventDefault(); return startTalking(); }
   if (e.key === "Escape" || e.key === "m") { e.preventDefault(); return openMenu(); }
@@ -1231,7 +1264,9 @@ form.addEventListener("submit", (e) => {
   if (!text) return;
   input.value = "";
   voice.hush();
-  if (state.talkTo === "brass") sayBrass(text);
+  if (text.startsWith(">")) catLine(text); // the cat's parser, whoever the talk box was open to
+  else if (state.withCat && !state.talking) log(`${state.denizens.name} does not do conversation. Start the line with >, as in > pet ${state.denizens.name.toLowerCase()}.`);
+  else if (state.talkTo === "brass") sayBrass(text);
   else say(text);
 });
 

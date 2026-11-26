@@ -21,6 +21,7 @@ from .persona import Persona, guest_shelves, load_guest_persona, load_persona, v
 from .brass import Brass, BrassTalk
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .tick import Ticker
+from .vellum import VellumParser, tile_at
 from .world import World, WorldError
 
 WEB_DIR = REPO_ROOT / "web"
@@ -38,6 +39,7 @@ class Game:
         self.ticker = Ticker(cfg, self.brain, self.errands)
         self.layout = World(cfg.state_dir)
         self.cat = Cat(cfg.state_dir)
+        self.vellum = VellumParser(self.cat, companion=cfg.companion)
         self.brass = Brass(cfg.state_dir)
         self.brass_talk = BrassTalk(cfg, self.brain)
         self.auth = Auth(cfg.state_dir)
@@ -101,6 +103,19 @@ class Game:
 
     def names(self) -> dict:
         return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
+
+    def cat_parse(self, payload: dict, role: str) -> dict:
+        """A '>' line for Vellum: the scripted parser (vellum.py), never a model. The gift's archive
+        titles are only reachable for the owner; a guest's parser has no archive at all."""
+        guest = role != "owner"
+        self.vellum.companion = self.cfg.companion
+        self.vellum.archive_dir = None if guest or not self.cfg.core_dir else self.cfg.core_dir / "archive"
+        cat = payload.get("cat") if isinstance(payload.get("cat"), dict) else None
+        where = cat or self.cat.get()
+        res = self.vellum.respond(str(payload.get("text", "")), "guest" if guest else "owner", payload.get("at"), cat,
+                                  waiting=0 if guest else len(self.ledger.pending()),
+                                  tile=tile_at(self.layout.load(), where.get("x"), where.get("y")))
+        return {**res, "cat": self.cat.get()}
 
 
 def make_handler(game: Game):
@@ -285,6 +300,14 @@ def make_handler(game: Game):
                     return self._json({"ok": True, "cat": game.cat.save(payload)})
                 except CatError as e:
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+
+            if self.path == "/api/cat/parse":  # a '>' line for Vellum: scripted, never a model
+                return self._json(game.cat_parse(payload, role))
+
+            # A '>' line is always for the parser, whoever the talk box was open to: it never reaches a model.
+            if self.path in ("/api/talk", "/api/brass/talk") and str(payload.get("text", "")).lstrip().startswith(">"):
+                res = game.cat_parse(payload, role)
+                return self._json({**res, "reply": res["text"], "parser": True})
 
             if self.path.startswith("/api/cat/") and self.path.split("/")[-1] in CAT_ACTIONS:
                 try:
