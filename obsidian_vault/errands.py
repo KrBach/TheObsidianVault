@@ -159,6 +159,19 @@ class Errands:
                 continue
         return sorted(recs, key=lambda r: r.get("approved", 0), reverse=True)
 
+    def close_interrupted(self) -> list[str]:
+        """At server start: an errand runs as a thread of the server, so one still marked "running" was cut
+        off by a restart and will never finish. Mark it failed (Tally hears of it) so it no longer counts
+        against max_running, which would otherwise block every approval. Returns the titles."""
+        closed = []
+        for rec in self.running():
+            rec.update(status="failed", finished=_now(),
+                       result="Interrupted: the game was restarted while this errand ran, so it never finished. "
+                              "Nothing came back from it; queue it again to rerun it.")
+            self._save(rec)
+            closed.append(rec.get("title", rec["id"]))
+        return closed
+
     def running(self) -> list[dict]:
         return [r for r in self.all() if r.get("status") == "running"]
 
