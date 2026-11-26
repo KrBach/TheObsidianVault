@@ -106,6 +106,7 @@ async function decide(action) {
       return;
     } else {
       $("review-msg").textContent = data.error;
+      onLog(`The ledger would not take that: ${data.error}`, "err"); // also below, where it cannot be missed
     }
   } finally {
     $("review-reject").disabled = false;

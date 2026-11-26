@@ -134,6 +134,21 @@ class ErrandTest(_Vault):
         self.assertEqual(rec["status"], "failed")
         self.assertIn("it broke", rec["result"])
 
+    def test_errands_cut_off_by_a_restart_are_closed_so_approvals_work_again(self):
+        cfg = self.cfg()
+        errands = Errands(cfg)
+        for eid in ("dead1", "dead2"):  # what a restart leaves behind: "running", with no thread left
+            errands._save({"id": eid, "kind": "code", "title": eid, "status": "running", "approved": 1.0})
+        led = Ledger(cfg, on_errand=errands.start)
+        r = led.propose_errand("research", "x", BRIEF)
+        with self.assertRaises(LedgerError):  # two "running" fill the default max_running
+            led.approve(r.id)
+        self.assertEqual(sorted(errands.close_interrupted()), ["dead1", "dead2"])
+        self.assertEqual(errands.get("dead1")["status"], "failed")
+        self.assertIn("restarted", errands.get("dead1")["result"])
+        led.approve(r.id)  # now it starts
+        self.wait(errands, r.id)
+
     def test_session_blocks_credit_tools_unless_a_limit_was_approved(self):
         errands = Errands(self.cfg())
         rec = {"id": "a1", "kind": "session", "title": "t", "brief": BRIEF, "spend_usd": 0}

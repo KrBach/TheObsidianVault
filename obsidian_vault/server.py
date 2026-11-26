@@ -33,6 +33,8 @@ class Game:
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
         self.errands = Errands(cfg)
+        for title in self.errands.close_interrupted():  # cut off by the last restart: never coming back
+            print(f"  errand interrupted by the restart, marked failed: {title}")
         self.board = Board(cfg)
         self.ledger = Ledger(cfg, on_errand=self.errands.start)
         self.moves = MoveLog(cfg.state_dir, cfg.timezone, cfg.fill)
@@ -355,6 +357,7 @@ def make_handler(game: Game):
                         game.ledger.reject(parts[3])
                         msg = "Rejected. Nothing was written."
                 except LedgerError as e:
+                    print(f"  ledger: could not {parts[4]} {parts[3]}: {e}")
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.CONFLICT)
                 return self._json({"ok": True, "message": msg})
 
