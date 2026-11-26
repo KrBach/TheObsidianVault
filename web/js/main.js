@@ -554,11 +554,14 @@ async function pollBrass() {
   } catch (_) { /* the server is away: he stays where he is */ }
 }
 
-// He has played out a walk to the board or out of the door: that errand is finished with.
-async function brassSeen(errand) {
+// He has played out his walk to the notice board: that errand is finished with.
+async function brassSeen(errand) { return brassTell("/api/brass/seen", errand); }
+// The imp has reached him with a code errand: he is on his way to the Outbox table.
+async function brassFetched(errand) { return brassTell("/api/brass/fetched", errand); }
+async function brassTell(path, errand) {
   try {
-    const r = await fetch("/api/brass/seen", { method: "POST", headers: { "Content-Type": "application/json" },
-                                               body: JSON.stringify({ errand }) });
+    const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ errand }) });
     if (r.ok) state.denizens.brassSet(await r.json());
   } catch (_) { /* the next poll catches up */ }
 }
@@ -1268,7 +1271,7 @@ async function boot() {
   labelShelves();
   // the cat and the errand imp: scripted here, no model calls
   state.denizens = createDenizens(w, { tileAt, log, roomAt,
-    people: () => ({ player: state.player, tally: state.tally }), brassSeen });
+    people: () => ({ player: state.player, tally: state.tally }), brassSeen, brassFetched });
   state.denizens.restore(w.cat_saved);
   if (!isGuest()) { // Brass follows the owner's code errands; a guest never sees him
     state.denizens.brassRestore(w.brass_saved);

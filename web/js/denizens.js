@@ -14,11 +14,13 @@
 //
 // The imp is the errand runner. When an errand starts it leaves the desk and runs out of the
 // vault; when the errand is done it comes back in with the report and pins it to the notice board.
+// A code errand is Brass's: then the imp hops off the desk and runs to fetch him from wherever he is
+// in the vault, and leaves by the front door once it has reached him.
 //
-// Brass, the Artificer, has a temporary body that follows the life of a code errand. The server
-// says which stage he is at (brass.py); this file walks him there. Queued: in by the front door to
-// stand beside Tally's desk. Rejected: back out of the front door. Approved: to the Outbox table,
-// tinkering while it runs. Done or failed: to the notice board, a pause, then out of the front door.
+// Brass, the Artificer, lives in the vault and has a temporary body that follows the life of a code
+// errand. The server says which stage he is at (brass.py); this file walks him there. Queued: nothing,
+// he potters on. Approved: he stays where he is until the imp reaches him, then walks to the Outbox
+// table and tinkers while it runs. Done or failed: to the notice board, a pause, then back to pottering.
 // He never stands in or by a doorway, by the bell, on the welcome mat or on the cat's cushion, and
 // like the cat he blocks nobody.
 
@@ -40,7 +42,7 @@ const CAT_LOOKS = [
 
 export function createDenizens(world, api) {
   const { tileAt, log, now = () => performance.now(), clock = () => Date.now(),
-          people = () => ({}), roomAt = () => null, brassSeen = () => {} } = api;
+          people = () => ({}), roomAt = () => null, brassSeen = () => {}, brassFetched = () => {} } = api;
   const def = world.creatures?.cat || {};
   const NAME = def.call || "the cat";
   const cell = tileAt;
@@ -387,7 +389,8 @@ export function createDenizens(world, api) {
   };
 
   function impGo(from, to, job) {
-    const path = bfs(from, [to], open);
+    const goals = !to.length || Array.isArray(to[0]) ? to : [to]; // one cell, or any of several (or none)
+    const path = goals.length ? bfs(from, goals, open) : null;
     imp.x = imp.rx = from[0]; imp.y = imp.ry = from[1];
     imp.path = path || [];
     imp.job = job;
@@ -405,9 +408,17 @@ export function createDenizens(world, api) {
         log(`The door opens and the imp scurries in with a rolled-up report: "${e.title}".`, "action");
       } else if (out.length) {
         const e = out.shift();
-        impGo(deskSide(), exitIn(), { kind: "out", errand: e });
         imp.carrying = false;
-        log(`An imp hops down from Tally's desk with the brief for "${e.title}" and runs for the door.`, "action");
+        if (e.fetch) {
+          // a code errand: run to wherever Brass is stopping, to a cell beside him that blocks nothing
+          const [bx, by_] = brassStop();
+          const beside = around(bx, by_, (x, y) => canSettle(x, y) && id(x, y) !== "cushion");
+          impGo(deskSide(), beside.length ? beside : around(bx, by_, open), { kind: "fetch", errand: e });
+          log(`An imp hops off Tally's desk and runs to fetch Brass for "${e.title}".`, "action");
+        } else {
+          impGo(deskSide(), exitIn(), { kind: "out", errand: e });
+          log(`An imp hops down from Tally's desk with the brief for "${e.title}" and runs for the door.`, "action");
+        }
       }
       return;
     }
@@ -415,6 +426,19 @@ export function createDenizens(world, api) {
       if (t < imp.nextStep) return;
       imp.nextStep = t + IMP_STEP_MS;
       [imp.x, imp.y] = imp.path.shift();
+      return;
+    }
+    if (imp.job?.kind === "fetch") {
+      const e = imp.job.errand, w = brass.want;
+      if (w?.present && w.errand === e.errand && w.stage === "fetching") {
+        log("The imp tugs at Brass's apron, points towards the Outbox table, and scampers off for the door.", "action");
+      } else {
+        log("The imp finds Brass already on the move, shrugs, and scampers off for the door.", "action");
+      }
+      brass.fetched.add(e.errand);
+      brassFetched(e.errand);
+      imp.job = { kind: "leave" };
+      imp.path = bfs([imp.x, imp.y], [exitIn()], open) || [];
       return;
     }
     if (imp.job?.kind === "pin") {
@@ -433,7 +457,11 @@ export function createDenizens(world, api) {
 
   const brass = { kind: "brass", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, nextStep: 0,
                   want: { present: false }, goal: null, arrived: false, pauseUntil: 0, tinker: false,
-                  pinned: "", told: new Set(), wanderAt: null, restUntil: 0 };
+                  pinned: "", told: new Set(), wanderAt: null, restUntil: 0,
+                  fetched: new Set(), fetchAsked: new Set() }; // errands the imp has fetched him for / been sent for
+  let brassLive = false; // set at boot for the owner: code errands are his, so the imp fetches him
+  // where he is stopping: the end of the walk he is on, or where he stands
+  const brassStop = () => brass.path.length ? brass.path[brass.path.length - 1] : [brass.x, brass.y];
   // where he may stand: not by a door, the bell, the mat or the way in (as for the cat), nor on its cushion
   const brassOk = (x, y) => open(x, y) && !forbidden(x, y) && id(x, y) !== "cushion";
   const stationOf = (goal) => (world.brass || {})[goal];
@@ -453,7 +481,14 @@ export function createDenizens(world, api) {
   }
   function standCell(goal) {
     if (goal === "wander") { if (!brass.wanderAt) newWander(); return brass.wanderAt; }
-    if (goal === "door") return open(...world.exit) ? world.exit : exitIn();
+    if (goal === "wait") {
+      // the imp is coming: he finishes the step to the pottering spot he was heading for (never a
+      // doorway), or stays put if he is already somewhere that blocks nothing
+      if (brass.wanderAt && brassOk(...brass.wanderAt)) return brass.wanderAt;
+      if (brassOk(brass.x, brass.y)) return [brass.x, brass.y];
+      newWander();
+      return brass.wanderAt;
+    }
     const a = stationOf(goal);
     if (!a) return null;
     if (brassOk(a[0], a[1])) return a;
@@ -472,21 +507,20 @@ export function createDenizens(world, api) {
   // where he is going: the stage's place, or after pinning a report, wherever the server says is next
   function brassGoal() {
     const w = brass.want;
-    if (!w?.present || w.stage === "leaving") return "wander"; // no job, or a rejected brief: back to his own time
-    if (w.stage === "reporting" && brass.pinned === w.errand) return (w.then && w.then !== "door") ? w.then : "wander";
+    if (!w?.present) return "wander"; // no job: his own time
+    if (w.stage === "fetching" && !brass.fetched.has(w.errand)) return "wait"; // until the imp reaches him
+    if (w.stage === "reporting" && brass.pinned === w.errand) return w.then || "wander";
     return w.goes;
   }
 
   function brassArrive(goal, t) {
     const w = brass.want, title = w?.title || "an errand";
     brass.tinker = goal === "outbox";
-    if (goal === "desk") log(`Brass sets his toolbox down beside Tally's desk and waits for you to look at "${title}" in the ledger.`, "action");
-    else if (goal === "outbox") log(`Brass spreads his tools on the Outbox table and gets to work on "${title}".`, "action");
+    if (goal === "outbox") log(`Brass spreads his tools on the Outbox table and gets to work on "${title}".`, "action");
     else if (goal === "board") {
       log(`Brass pins a note to the notice board: "${title}" ${w.outcome === "failed" ? "failed" : "is done"}.`, "action");
       brass.pauseUntil = t + BOARD_PAUSE_MS;
-    } else if (goal === "door") log("Brass tips his goggles to nobody in particular and goes out by the front door.", "action");
-    else if (goal === "wander") {
+    } else if (goal === "wander" || goal === "wait") {
       brass.tinker = dist([brass.x, brass.y], stationOf("outbox") || [-9, -9]) <= 1;
       brass.restUntil = t + (40 + Math.random() * 100) * 1000;
     }
@@ -495,9 +529,15 @@ export function createDenizens(world, api) {
   function brassStep(t) {
     const w = brass.want;
     if (brass.hidden) {
+      // only if he found nowhere to potter at boot: he comes in by the front door
       if (!w?.present) return;
-      if (w.stage === "leaving") { seenOnce(w.errand); return; } // a rejection nobody saw him for: nothing to walk
       if (w.stage === "reporting" && brass.told.has(w.errand)) return;
+      if (w.stage === "fetching" && !brass.fetched.has(w.errand)) {
+        // nobody inside to fetch: the imp runs out for him, and he comes in by the door
+        brass.fetched.add(w.errand); brass.fetchAsked.add(w.errand);
+        out.push({ errand: w.errand, title: w.title });
+        brassFetched(w.errand);
+      }
       [brass.x, brass.y] = world.exit; brass.rx = brass.x; brass.ry = brass.y;
       brass.hidden = false; brass.alpha = 0; brass.goal = null; brass.arrived = false; brass.tinker = false;
       log(w.stage === "reporting"
@@ -505,14 +545,16 @@ export function createDenizens(world, api) {
         : `The front door opens and Brass, the Artificer, stumps in with his toolbox, about "${w.title}".`, "action");
     }
     const goal = brassGoal();
-    if (w?.present && w.stage === "leaving") seenOnce(w.errand); // a rejection: nothing to walk out for
     if (goal === "wander" && brass.goal === "wander" && brass.arrived && t >= brass.restUntil) { newWander(); brass.goal = null; }
     if (goal !== brass.goal) {
-      if (goal === "wander" && w?.stage === "leaving" && brass.goal === "desk") log("Brass shrugs at the rejected brief and picks up his toolbox.", "action");
-      if (goal === "wander" && brass.goal !== null && brass.goal !== "wander") newWander();
+      if (goal === "wander" && brass.goal !== null && brass.goal !== "wander" && brass.goal !== "wait") newWander();
       brass.goal = goal; brass.arrived = false; brass.tinker = false;
       const to = standCell(goal);
       brass.path = (to && bfs([brass.x, brass.y], [to], open)) || [];
+    }
+    if (goal === "wait" && !brass.fetchAsked.has(w.errand)) { // send the imp, now that his stop is known
+      brass.fetchAsked.add(w.errand);
+      out.push({ fetch: true, errand: w.errand, title: w.title });
     }
     if (brass.path.length) {
       brass.alpha = Math.min(1, brass.alpha + 0.1);
@@ -522,14 +564,6 @@ export function createDenizens(world, api) {
       return;
     }
     if (!brass.arrived) { brass.arrived = true; brassArrive(goal, t); }
-    if (goal === "door") {
-      brass.alpha -= 0.06;
-      if (brass.alpha <= 0) {
-        brass.hidden = true; brass.goal = null; brass.tinker = false;
-        if (w?.present && (w.stage === "leaving" || w.stage === "reporting")) seenOnce(w.errand);
-      }
-      return;
-    }
     brass.alpha = Math.min(1, brass.alpha + 0.1);
     if (goal === "board" && w?.stage === "reporting" && brass.pinned !== w.errand && t >= brass.pauseUntil) {
       brass.pinned = w.errand; // walks on at once; the server hears it and says what is next
@@ -540,10 +574,16 @@ export function createDenizens(world, api) {
   // The server's word on where he should be (brass.py), from the poll.
   function brassSet(st) { brass.want = st || { present: false }; }
 
-  // At boot: an errand waiting or running puts him straight back where he was, with no walk in.
+  // At boot: an errand running (or just approved) puts him straight back at the Outbox table, with no
+  // walk in and no fetch replayed.
   function brassRestore(st) {
     brassSet(st);
-    if (!st?.present || !["waiting", "working"].includes(st.stage)) {
+    brassLive = true;
+    if (st?.present && st.stage === "fetching") {
+      brass.fetched.add(st.errand); brass.fetchAsked.add(st.errand);
+      brassFetched(st.errand);
+    }
+    if (!st?.present || !["fetching", "working"].includes(st.stage)) {
       // no job on: he is somewhere in the vault, about his own business
       newWander();
       const at = brass.wanderAt;
@@ -565,11 +605,15 @@ export function createDenizens(world, api) {
   function brassText() {
     if (brass.hidden) return "";
     const w = brass.want;
-    if (brass.goal === "wander") {
+    if (brass.goal === "wander" || !w?.present) {
       const r = roomAt(brass.x, brass.y);
       return `Brass is between jobs, pottering about ${r ? r.name : "the vault"}${brass.tinker ? " at his Outbox table" : ""}.`;
     }
-    if (brass.goal === "door" || !w?.present) return "Brass is leaving by the front door.";
+    if (w.stage === "fetching" && brass.fetched.has(w.errand)) { // the imp reached him; the server catches up
+      return brass.arrived && brass.goal === "outbox"
+        ? `Brass is at the Outbox table, working on "${w.title}".`
+        : `Brass is on his way to the Outbox table to work on "${w.title}".`;
+    }
     if (brass.pinned === w.errand) return "Brass has pinned his report and is moving on.";
     return (brass.arrived ? w.say : w.going) || "";
   }
@@ -581,7 +625,8 @@ export function createDenizens(world, api) {
     brass,
     entities() { return [cat, ...(imp.hidden ? [] : [imp]), ...(brass.hidden ? [] : [brass])]; },
     tick(busy) { const t = now(); catStep(t, busy); impStep(t); brassStep(t); },
-    errandOut(e) { out.push(e); },
+    // a code errand is Brass's: the imp runs to fetch him (from brassStep) instead of out of the door
+    errandOut(e) { if (!(brassLive && e?.kind === "code")) out.push(e); },
     errandBack(e) { back.push(e); },
     brassSet,
     brassRestore,
