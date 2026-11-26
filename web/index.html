@@ -121,6 +121,8 @@
     <section id="bottom">
       <div id="dialogue">
         <figure class="portrait" id="portrait-tally"><div class="art"></div><figcaption class="name"></figcaption></figure>
+        <figure class="portrait" id="portrait-cat"><div class="art"></div><figcaption class="name"></figcaption></figure>
+        <figure class="portrait" id="portrait-brass"><div class="art"></div><figcaption class="name"></figcaption></figure>
         <div id="log"></div>
         <figure class="portrait" id="portrait-player"><div class="art"></div><figcaption class="name"></figcaption></figure>
       </div>
@@ -130,6 +132,14 @@
         <button type="button" id="mic" title="Speak instead of typing: click, talk, and pause to send" hidden>🎙</button>
         <button type="button" id="enlarge" title="Enlarge the talk box for long answers (e when not talking)">⤢</button>
       </form>
+      <div id="cat-actions" hidden>
+        <button type="button" data-cat="look">Look</button>
+        <button type="button" data-cat="pet">Pet</button>
+        <button type="button" data-cat="feed" class="owner-only">Feed</button>
+        <button type="button" data-cat="play">Play with the quill</button>
+        <button type="button" data-cat="call">Call ("pspsps")</button>
+        <button type="button" data-cat="leave">Leave it be (Esc)</button>
+      </div>
     </section>
   </div>
   <div id="login" hidden>

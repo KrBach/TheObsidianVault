@@ -1,10 +1,10 @@
 // Talks to the local server, which streams Tally's reply as server-sent events.
 
-export async function talk(text, where, handlers) {
+export async function talk(text, where, handlers, extra = {}) {
   const res = await fetch("/api/talk", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, where }),
+    body: JSON.stringify({ ...extra, text, where }),
   });
   if (!res.ok || !res.body) throw new Error(`server said ${res.status}`);
 

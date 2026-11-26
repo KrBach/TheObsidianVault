@@ -18,7 +18,7 @@ from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
-from .brass import Brass
+from .brass import Brass, BrassTalk
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .tick import Ticker
 from .world import World, WorldError
@@ -39,6 +39,7 @@ class Game:
         self.layout = World(cfg.state_dir)
         self.cat = Cat(cfg.state_dir)
         self.brass = Brass(cfg.state_dir)
+        self.brass_talk = BrassTalk(cfg, self.brain)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
 
@@ -293,6 +294,17 @@ def make_handler(game: Game):
                     return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
                 return self._json({**res, "cat": game.cat.get()})
 
+            if self.path == "/api/brass/talk":  # owner only (OWNER_ONLY): a line to Brass, answered by a cheap model
+                try:
+                    reply = game.brass_talk.reply(str(payload.get("text", "")), game.brass_state(),
+                                                  game.errands.all(), game.errands.summary)
+                except ValueError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
+                except Exception as e:  # noqa: BLE001 - the model call failed: say so in the game
+                    return self._json({"ok": False, "error": f"Brass did not answer ({type(e).__name__}: {str(e)[:200]})"},
+                                      HTTPStatus.BAD_GATEWAY)
+                return self._json({"ok": True, "reply": reply})
+
             if self.path == "/api/brass/seen":  # the browser played out Brass's walk to the board or the door
                 game.brass.seen_walk(str(payload.get("errand", "")))
                 return self._json(game.brass_state())
@@ -328,6 +340,7 @@ def make_handler(game: Game):
             where = str(payload.get("where", "")).strip()[:1000]
             if guest:
                 return self._stream(game.guest_brain, f"<game_state>{where}</game_state>\n{text}" if where else text, guest=True)
+            game.cat.note_talk(payload.get("cat"), payload.get("tally"))  # what Tally is told, for tend_cat
             finished = game.errands.unreported()
             if finished:
                 news = game.cfg.fill("\n\n".join(game.errands.summary(r) for r in finished))
