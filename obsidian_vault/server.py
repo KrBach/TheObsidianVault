@@ -98,8 +98,8 @@ class Game:
             self.brain.reset()  # a conversation belongs to the folder it ran in; start a fresh one
 
     def brass_state(self) -> dict:
-        """Where Brass should be: the pending ops are read before the records (see Brass.update)."""
-        return self.brass.update(self.ledger.pending(), self.errands.all())
+        """Where Brass should be, from the errand records (see Brass.update)."""
+        return self.brass.update(self.errands.all())
 
     def names(self) -> dict:
         return {"owner": self.cfg.owner, "companion": self.cfg.companion, "owner_portrait": self.cfg.owner_portrait}
@@ -328,8 +328,12 @@ def make_handler(game: Game):
                                       HTTPStatus.BAD_GATEWAY)
                 return self._json({"ok": True, "reply": reply})
 
-            if self.path == "/api/brass/seen":  # the browser played out Brass's walk to the board or the door
+            if self.path == "/api/brass/seen":  # the browser played out Brass's walk to the notice board
                 game.brass.seen_walk(str(payload.get("errand", "")))
+                return self._json(game.brass_state())
+
+            if self.path == "/api/brass/fetched":  # the imp reached Brass: he walks to the Outbox table
+                game.brass.fetched(str(payload.get("errand", "")))
                 return self._json(game.brass_state())
 
             if self.path == "/api/tick":

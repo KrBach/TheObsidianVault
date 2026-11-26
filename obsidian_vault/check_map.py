@@ -106,7 +106,7 @@ def check(world: dict, tiles: dict) -> list[str]:
         if tuple(spot["at"]) != tuple(world["tally"]) and (sx, sy) not in seen:
             problems.append(f"spot '{spot.get('id', '?')}' at ({sx},{sy}) cannot be reached")
 
-    # Brass's places ("brass"): he comes and goes by the way out, and at the desk, the Outbox table and
+    # Brass's places ("brass"): he comes in by the way out if he is not already inside, and at the Outbox table and
     # the board he needs a reachable cell at or beside the anchor that is not in or by a doorway, by the
     # bell, on the welcome mat, on the cat's cushion or on the way in (the same rule as in denizens.js).
     brass = world.get("brass") or {}
