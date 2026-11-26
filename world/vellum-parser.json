@@ -1,0 +1,134 @@
+{
+  "_about": "Words for the Vellum text parser (obsidian_vault/vellum.py). Written by Tally (vault note games/obsidian-vault-vellum-parser.md, 2026-11-25); Brass wired them in. Edit the words freely: the code reads them at every line. '<word>' and '<title>' are filled in by the game. Lines under 'brass_placeholders' are not from the note: Brass needed a line the note did not give, and Tally may rewrite them.",
+
+  "range": 2,
+  "pet_reach": 1,
+  "gift_odds": 0.05,
+
+  "stop_words": ["the", "a", "an", "at", "to", "with", "on", "please", "gently"],
+  "particles": ["up", "about", "over", "some"],
+
+  "verbs": {
+    "look": ["look", "l", "examine", "x", "inspect", "watch", "observe"],
+    "pet": ["pet", "stroke", "scratch", "rub", "pat", "boop"],
+    "feed": ["feed", "give", "offer"],
+    "play": ["play", "dangle", "wave", "wiggle", "tease"],
+    "call": ["call", "pspsps", "psps", "here", "kitty", "come"],
+    "talk": ["talk", "say", "speak", "ask", "tell", "hello", "hi"],
+    "take": ["take", "pick", "lift", "hold", "carry", "hug"],
+    "smell": ["smell", "sniff"],
+    "listen": ["listen", "hear"],
+    "wait": ["wait", "z"],
+    "help": ["help", "?", "hint"]
+  },
+
+  "objects": {
+    "vellum": ["vellum", "cat", "kitty", "it"],
+    "quill": ["quill", "string", "toy"],
+    "bowl": ["bowl"],
+    "fish": ["fish", "food", "treat", "sardine"],
+    "cushion": ["cushion"],
+    "tail": ["tail"],
+    "paw": ["paw"],
+    "belly": ["belly"],
+    "ears": ["ears"]
+  },
+
+  "guest_verbs": ["look", "pet", "call", "talk"],
+
+  "tiers": {
+    "_about": "From the cat's affinity score (cat.py), the same steps as its fondness words: below 0.3 wary, below 0.75 friendly, from 0.75 fond.",
+    "friendly_from": 0.3,
+    "fond_from": 0.75
+  },
+
+  "out_of_range": "Vellum is too far away to hear you. Or is choosing not to.",
+
+  "look": {
+    "sleepy": "A small slate-grey cat, curled nose to tail. One white forepaw pokes out. The black tip of its tail twitches in a dream.",
+    "curious": "Vellum is upright, ears forward, studying you as if you were a footnote it disagrees with.",
+    "hungry": "Vellum sits by the bowl, staring at it, then at you, then at the bowl. The message is clear.",
+    "playful": "Vellum's pupils are huge. Its rear end is doing the wiggle.",
+    "tail": "The tip is black, as if dipped in the inkwell. Nobody saw it happen.",
+    "paw": "One white forepaw. Vellum keeps it very clean, as if it had signed something."
+  },
+
+  "pet": {
+    "sleepy": "Vellum opens one eye, blinks slowly, and goes back to sleep.",
+    "sleepy_fond": "Vellum opens one eye, blinks slowly, and stretches a paw towards you without waking.",
+    "curious": "Vellum leans into your hand and purrs like a small engine.",
+    "hungry": "Vellum tolerates it, briefly, and looks meaningfully at the bowl.",
+    "playful": "Vellum grabs your hand with both paws and kicks it. Affectionately, probably.",
+    "walk_off": "Vellum decides that was enough and leaves, tail high.",
+    "belly": "A trap. You knew it was a trap. Vellum clamps on, then lets go, looking pleased.",
+    "belly_fond": "Vellum lets you. Just this once. Do not tell anyone.",
+    "ears": "Vellum's eyes narrow to slits. The purr gets louder."
+  },
+
+  "feed": {
+    "hungry": "You fill the bowl. Vellum eats with the focus of a scholar, then washes its face.",
+    "other": "Vellum sniffs the bowl and looks at you as if you had served the wrong vintage.",
+    "quill": "Vellum does not want the quill. Vellum wants you to wave the quill."
+  },
+
+  "play": {
+    "playful": "Vellum crouches, wiggles, and pounces on the quill. Victory.",
+    "curious": "Vellum watches the quill go back and forth. Its head follows; the rest of it does not.",
+    "ignore": "Vellum ignores the quill completely."
+  },
+
+  "call": {
+    "sleepy": "One ear rotates towards you. The rest of Vellum stays asleep.",
+    "awake": "Vellum heard you. Vellum finishes what it was doing. Vellum comes over at its own pace.",
+    "awake_fond": "Vellum trots over at once, tail up, and headbutts your shin."
+  },
+
+  "talk": {
+    "default": "Vellum listens politely and offers no opinion.",
+    "tally": "Vellum glances toward the desk and flicks its tail. Make of that what you will.",
+    "secret": "Vellum keeps secrets. It is the only one in the vault who doesn't write everything down."
+  },
+
+  "take": {
+    "not_fond": "You can't pick up Vellum. Vellum has opinions about that.",
+    "fond": "Vellum lets you lift it for exactly three seconds, then pours out of your arms like ink."
+  },
+
+  "smell": "Warm dust, parchment and faintly, inexplicably, sardines.",
+
+  "listen": {
+    "sleepy": "A small snore, about the volume of a page turning.",
+    "awake": "Purring, somewhere below hearing."
+  },
+
+  "wait": "Time passes. Vellum continues to be a cat.",
+
+  "help": "Try: look, pet, feed, play, call, talk. Vellum does not accept bribes, except fish.",
+
+  "unknown_verb": "I don't know the word '<word>'.",
+  "unknown_object": "You don't see a '<word>' here. Vellum does, apparently, and is staring at it.",
+
+  "refusals": {
+    "_about": "Verbs the parser knows only to refuse. 'objects' limits a refusal to those objects (none: any object, or none at all).",
+    "open": {"objects": ["vellum"], "text": "Vellum is not a door."},
+    "eat": {"objects": ["fish"], "text": "That's Vellum's."},
+    "kick": {"text": "No. Not in this vault."},
+    "hit": {"text": "No. Not in this vault."},
+    "throw": {"text": "No. Not in this vault."},
+    "push": {"text": "No. Not in this vault."},
+    "read": {"objects": ["vellum"], "text": "Vellum is made of vellum only in name."},
+    "xyzzy": {"text": "A hollow voice says 'Fool.' Vellum looks unimpressed."}
+  },
+
+  "hidden": {
+    "gift": "Vellum leaves and comes back with a page from the Archive in its mouth. It drops it at your feet: '<title>'.",
+    "ledger": "Vellum purrs and does not move off the ledger. It seems to think you have work to do.",
+    "compass": "Vellum is asleep exactly at the centre of the compass. North is wherever it says it is."
+  },
+
+  "brass_placeholders": {
+    "out_of_reach": "Vellum is just out of reach.",
+    "guest": "Vellum gives you a long look. A visitor may look, pet, call or talk.",
+    "empty": "Try: look, pet, feed, play, call, talk. Vellum does not accept bribes, except fish."
+  }
+}

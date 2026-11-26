@@ -66,6 +66,22 @@ def walk_off_odds(value: float) -> float:
     return round(WALK_OFF * (1 - 0.6 * max(0.0, min(1.0, value))), 3)
 
 
+def steps(a, b) -> int | None:
+    """Steps between two cells, diagonals counting as one: the one distance rule for the cat. What
+    Tally is told ("right next to you"), tend_cat and the text parser all ask this, so they cannot
+    disagree. None if either cell is unknown."""
+    p, q = _cell(a), _cell(b)
+    if p is None or q is None:
+        return None
+    return max(abs(p[0] - q[0]), abs(p[1] - q[1]))
+
+
+def next_to(a, b) -> bool:
+    """Right next to (or on the same cell as) each other."""
+    d = steps(a, b)
+    return d is not None and d <= 1
+
+
 class CatError(Exception):
     pass
 
@@ -196,7 +212,7 @@ class Cat:
         me, there = _cell(at), _cell(state)
         if me is None or there is None:
             raise CatError(f"nobody knows where {self.name} is just now")
-        dist = max(abs(me[0] - there[0]), abs(me[1] - there[1]))
+        dist = steps(me, there)
         n = self.name
         if who == "tally" and dist > 1 and self._next_at_talk():
             # Tally was told, when OWNER's message came in, that the cat was right next to them. Positions saved
@@ -262,10 +278,9 @@ class Cat:
 
     def _next_at_talk(self, within: float = 600) -> bool:
         seen = self._load().get("at_talk") or {}
-        c, t = _cell(seen.get("cat")), _cell(seen.get("tally"))
-        if c is None or t is None or self.clock() - float(seen.get("time") or 0) > within:
+        if self.clock() - float(seen.get("time") or 0) > within:
             return False
-        return max(abs(c[0] - t[0]), abs(c[1] - t[1])) <= 1
+        return next_to(seen.get("cat"), seen.get("tally"))
 
     def take_pending(self) -> list[dict]:
         """Tally's tending since the last reply, for the browser to play out."""
@@ -286,8 +301,7 @@ class Cat:
         line = f"{s['name']}, the vault cat, is at ({s['x']},{s['y']})" + (f", {s['on']}" if s["on"] else "") + f": {what}."
         if s["hungry"]:
             line += " It has not been fed for over three hours."
-        me = _cell(tally_at)
-        if me:
-            d = max(abs(me[0] - s["x"]), abs(me[1] - s["y"]))
+        d = steps(tally_at, s)
+        if d is not None:
             line += " It is right next to you." if d <= 1 else f" It is {d} steps from you."
         return line + " " + s["fondness_text"]
