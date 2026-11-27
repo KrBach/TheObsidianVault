@@ -33,6 +33,7 @@
         <div id="ledger-pop" class="pop" hidden>
           <div class="review-head"><span>LEDGER · waiting for you</span><button type="button" class="pop-close" id="ledger-close" title="Close (Esc)">×</button></div>
           <div id="ledger-list"></div>
+          <div id="ledger-queue"></div>
           <div id="ledger-size" class="dim small"></div>
         </div>
         <div id="menu" class="pop" hidden>
@@ -47,7 +48,7 @@
               <button type="button" class="menu-btn" id="m-board">Notice board (b)</button>
               <button type="button" class="menu-btn" id="m-ledger">Ledger (p)</button>
               <button type="button" class="menu-btn" id="m-character">Character: names, portrait, time zone, password</button>
-              <button type="button" class="menu-btn" id="m-settings">Settings: vault folders, errands browser</button>
+              <button type="button" class="menu-btn" id="m-settings">Settings: vault folders, errands browser, usage limits</button>
               <button type="button" class="menu-btn" id="m-logout">Leave the vault (log out)</button>
               <div class="label">THE VAULT</div>
               <div id="menu-status" class="dim small"></div>
@@ -98,6 +99,9 @@
               <label>Work vault folder (optional, read-only)<input id="set-work" placeholder="empty: no Work vault" autocomplete="off" spellcheck="false"></label>
               <div id="set-work-ok" class="small dim"></div>
               <label>Browser for session errands<select id="set-browser"></select></label>
+              <label>Usage budget per 5-hour block, $ (scheduled errands wait above it)<input id="set-block" type="number" min="0" max="1000" step="0.5"></label>
+              <label>Usage cap per day, $<input id="set-cap" type="number" min="0" max="1000" step="0.5"></label>
+              <div class="small dim">Estimates from API prices, not your plan's own accounting.</div>
               <button type="button" class="link-btn" id="set-character">your name, portrait and time zone: Character…</button>
               <div id="set-file" class="dim small"></div>
               <div class="review-foot"><span id="set-msg" class="warn"></span><button type="submit" class="primary">Save</button></div>
@@ -111,6 +115,7 @@
           <div class="review-foot">
             <span id="review-msg" class="warn"></span>
             <button type="button" id="review-reject">Reject</button>
+            <button type="button" id="review-schedule" hidden title="Approve it; it starts on its own when the usage budget has room">When there's room</button>
             <button type="button" id="review-approve" class="primary">Approve and write</button>
           </div>
         </div>

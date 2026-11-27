@@ -34,6 +34,7 @@ TOOL_FLAVOUR = {
     "mcp__vault__propose_errand": "Tally writes out an errand and sets it on the desk for you",
     "mcp__vault__list_errands": "Tally checks the errand book",
     "mcp__vault__errand_report": "Tally reads an errand's report",
+    "mcp__vault__queue_status": "Tally checks the errand queue and the usage meter",
     "mcp__vault__pin_to_board": "Tally pins something to the notice board",
     "mcp__vault__unpin_from_board": "Tally takes a page down from the notice board",
     "WebSearch": "Tally sends a runner out for news",
@@ -62,6 +63,7 @@ VAULT_TOOLS = [
     "mcp__vault__propose_errand",
     "mcp__vault__list_errands",
     "mcp__vault__errand_report",
+    "mcp__vault__queue_status",
     "mcp__vault__pin_to_board",
     "mcp__vault__unpin_from_board",
 ]

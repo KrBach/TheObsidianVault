@@ -14,6 +14,11 @@ Kinds:
             the vault folder, for things like a data check with your own skills; tools that spend art
             credits are blocked unless the brief carries a spending limit the owner approved
 
+On approval OWNER picks "run now" (it starts at once, as before) or "when there's room": then the
+errand is recorded as "scheduled" and the scheduler (scheduler.py, plain code on a timer) starts it
+when the usage meter says its projected cost fits. Every finished run records its tokens and an
+estimated cost at API prices; the projection for a kind is the average of its recent runs.
+
 Records live in <state_dir>/errands/<id>.json; the full output in <id>.log.
 """
 
@@ -27,8 +32,20 @@ from pathlib import Path
 
 from .config import BROWSER_APPS, Config
 from .persona import load_core
+from . import usage
 
 KINDS = ("research", "code", "session")
+# What an errand of each kind is expected to cost before any has been measured, in dollars at API
+# prices. Code errands ran $2.30 to $2.90 in the 2026-11-26 usage report; the others are starting
+# guesses that the running average replaces as soon as one run of that kind is recorded.
+DEFAULT_PROJECTION = {"research": 1.00, "code": 2.60, "session": 2.60}
+AVERAGE_OF = 10  # the projection is the average of this many most recent measured runs of a kind
+INTERRUPTED = ("Interrupted: the game was restarted while this errand ran, so it never finished. "
+               "Nothing came back from it; queue it again to rerun it.")
+REQUEUED = ("Interrupted: the game was restarted while this errand ran. It was scheduled, so it is back in "
+            "the queue and will start again when there is room.")
+RESUMED = ("This errand was cut off by a restart once and has been started again. For a code errand the branch "
+           "may already hold commits from the first try: look at them first and keep what is sound.")
 
 # Tools that spend the owner's art credits, under the names connectors get in Claude Code.
 _SPRITEFORGE = ["generate"]
@@ -126,10 +143,11 @@ class ErrandError(Exception):
 
 
 class Errands:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, on_finish=None):
         self.cfg = cfg
         self.dir = cfg.state_dir / "errands"
         self.lock = threading.Lock()
+        self.on_finish = on_finish  # called after a run ends (the scheduler looks for room then)
 
     # ---------- records ----------
 
@@ -161,13 +179,16 @@ class Errands:
 
     def close_interrupted(self) -> list[str]:
         """At server start: an errand runs as a thread of the server, so one still marked "running" was cut
-        off by a restart and will never finish. Mark it failed (Tally hears of it) so it no longer counts
-        against max_running, which would otherwise block every approval. Returns the titles."""
+        off by a restart and will never finish. Either way Tally hears that it was interrupted, and it no
+        longer counts against max_running, which would otherwise block every approval. One OWNER approved
+        "when there's room" goes back to the queue; one started "now" is marked failed. Returns the titles."""
         closed = []
         for rec in self.running():
-            rec.update(status="failed", finished=_now(),
-                       result="Interrupted: the game was restarted while this errand ran, so it never finished. "
-                              "Nothing came back from it; queue it again to rerun it.")
+            if rec.get("scheduled"):
+                rec.update(status="scheduled", interrupted=int(rec.get("interrupted") or 0) + 1,
+                           interrupt_reported=False, result=REQUEUED)
+            else:
+                rec.update(status="failed", finished=_now(), result=INTERRUPTED)
             self._save(rec)
             closed.append(rec.get("title", rec["id"]))
         return closed
@@ -175,8 +196,15 @@ class Errands:
     def running(self) -> list[dict]:
         return [r for r in self.all() if r.get("status") == "running"]
 
+    def scheduled(self) -> list[dict]:
+        """Errands OWNER approved "when there's room", in the order they will start: by OWNER's priority,
+        otherwise oldest first."""
+        recs = [r for r in self.all() if r.get("status") == "scheduled"]
+        return sorted(recs, key=lambda r: (float(r.get("order", r.get("approved", 0))), float(r.get("approved", 0))))
+
     def unreported(self) -> list[dict]:
-        """Finished errands the talk session has not been told about yet. Marks them told."""
+        """Finished errands the talk session has not been told about yet, and scheduled ones a restart
+        cut off and put back in the queue. Marks them told."""
         with self.lock:
             out = []
             for r in self.all():
@@ -184,41 +212,141 @@ class Errands:
                     r["reported"] = _now()
                     self._save(r)
                     out.append(r)
+                elif r.get("status") == "scheduled" and r.get("interrupted") and not r.get("interrupt_reported"):
+                    r["interrupt_reported"] = _now()
+                    self._save(r)
+                    out.append(r)
             return out
+
+    # ---------- what errands cost ----------
+
+    def projection(self, kind: str) -> tuple[float, int]:
+        """(expected dollars, how many measured runs that rests on) for an errand of this kind: the
+        average of its most recent measured runs, or the starting guess when none was measured yet."""
+        runs = [r for r in self.all() if r.get("kind") == kind and isinstance(r.get("est_usd"), (int, float))
+                and r.get("status") in ("done", "failed") and not r.get("self_started")]
+        runs.sort(key=lambda r: r.get("finished", 0), reverse=True)
+        runs = runs[:AVERAGE_OF]
+        if not runs:
+            return DEFAULT_PROJECTION.get(kind, max(DEFAULT_PROJECTION.values())), 0
+        return sum(float(r["est_usd"]) for r in runs) / len(runs), len(runs)
+
+    def _record_cost(self, rec: dict, data: dict | None) -> None:
+        """Tokens and an estimated cost at API prices for a finished run: from the run's own JSON (its
+        per-model totals), else from Claude Code's logs for its session."""
+        found = usage.tokens_from_result(data) if isinstance(data, dict) else None
+        tokens = found[0] if found else None
+        if tokens is None and isinstance(data, dict) and data.get("session_id"):
+            tokens = usage.session_tokens(Path(self.cfg.usage_logs_dir or usage.default_logs_dir()),
+                                          str(data["session_id"]), since=float(rec.get("started") or 0) - 60)
+        if tokens is None:
+            return
+        rec["tokens"] = {k: int(tokens.get(k, 0)) for k in ("input", "output", "cache_read", "cache_write")}
+        rec["est_usd"] = round(float(tokens.get("usd", 0)), 2)
 
     # ---------- starting ----------
 
-    def start(self, op: dict) -> str:
-        """Start an approved errand (an op from the ledger). Returns a line for OWNER."""
+    def _check(self, op: dict) -> str:
         if not self.cfg.errands:
             raise ErrandError("errands are switched off ([errands] enabled = false in config.toml)")
         if not self.cfg.claude_path:
             raise ErrandError("Claude Code was not found, so errands cannot run")
-        if len(self.running()) >= self.cfg.errand_max_running:
-            raise ErrandError(f"{self.cfg.errand_max_running} errands are already running; approve this one when one finishes")
-        kind = op.get("errand_kind")
+        kind = op.get("errand_kind") or op.get("kind")
         if kind not in KINDS:
             raise ErrandError(f"unknown errand kind {kind!r}")
+        return kind
+
+    def _new_record(self, op: dict, kind: str, status: str) -> dict:
+        return {"id": op["id"], "kind": kind, "title": op.get("title", ""), "brief": op.get("brief", ""),
+                "spend_usd": float(op.get("spend_usd") or 0), "status": status, "approved": _now(),
+                "self_started": bool(op.get("self_started")),
+                "log": str(self.dir / f"{op['id']}.log")}
+
+    def start(self, op: dict) -> str:
+        """Start an approved errand (an op from the ledger) now. Returns a line for OWNER."""
+        kind = self._check(op)
+        if len(self.running()) >= self.cfg.errand_max_running:
+            raise ErrandError(f"{self.cfg.errand_max_running} errands are already running; approve this one when one finishes")
         if kind == "session":
             problem = self.browser_problem()
             if problem:  # fail before anything runs, so the errand does not sit there with no browser
                 raise ErrandError(problem)
-        rec = {"id": op["id"], "kind": kind, "title": op.get("title", ""), "brief": op.get("brief", ""),
-               "spend_usd": float(op.get("spend_usd") or 0), "status": "running", "approved": _now(),
-               "self_started": bool(op.get("self_started")),
-               "log": str(self.dir / f"{op['id']}.log")}
+        rec = self._new_record(op, kind, "running")
+        self._launch(rec)
+        where = f" on branch {rec['branch']}" if rec.get("branch") else ""
+        return f"Errand started{where}: {rec['title']}. Tally will hear the report when it is done."
+
+    def schedule(self, op: dict) -> str:
+        """Put an approved errand in the queue, to start when there is room (scheduler.py). Returns a line for OWNER."""
+        kind = self._check(op)
+        if self.get(op["id"]):
+            raise ErrandError("that errand is already recorded")
+        rec = self._new_record(op, kind, "scheduled")
+        rec.update(scheduled=True, order=rec["approved"])
+        with self.lock:
+            self._save(rec)
+        est, n = self.projection(kind)
+        basis = f"the average of {n} {kind} errand{'s' if n != 1 else ''}" if n else "a starting guess"
+        return (f"Errand scheduled: {rec['title']}. It starts on its own when there is room for about ${est:.2f} "
+                f"({basis}). Tally will hear the report when it is done.")
+
+    def start_scheduled(self, eid: str) -> dict:
+        """Start one scheduled errand now (the scheduler calls this once it has found room). Raises
+        ErrandError if it may not start; a browser that is not open leaves it waiting in the queue."""
+        with self.lock:
+            rec = self.get(eid)
+            if not rec or rec.get("status") != "scheduled":
+                raise ErrandError("that errand is not waiting in the queue")
+            self._check(rec)
+            if self.running():
+                raise ErrandError("another errand is running; scheduled errands go one at a time")
+            if rec["kind"] == "session":
+                problem = self.browser_problem()
+                if problem:
+                    raise ErrandError(problem)
+            rec["status"] = "running"
+            try:
+                self._launch(rec)
+            except ErrandError as e:  # e.g. no worktree could be made: it would fail the same way every time
+                rec.update(status="failed", finished=_now(), result=f"The errand could not start: {e}")
+                self._save(rec)
+                raise
+        return rec
+
+    def move(self, eid: str, direction: str) -> list[dict]:
+        """OWNER's priority: move a scheduled errand one place up or down the queue. Returns the queue."""
+        if direction not in ("up", "down"):
+            raise ErrandError("move it up or down")
+        with self.lock:
+            q = self.scheduled()
+            i = next((n for n, r in enumerate(q) if r["id"] == eid), None)
+            if i is None:
+                raise ErrandError("that errand is not waiting in the queue")
+            j = i - 1 if direction == "up" else i + 1
+            if 0 <= j < len(q):
+                for n, r in enumerate(q):  # make the order explicit, then swap the two
+                    r["order"] = float(n)
+                q[i]["order"], q[j]["order"] = float(j), float(i)
+                for r in q:
+                    self._save(r)
+        return self.scheduled()
+
+    def _launch(self, rec: dict) -> None:
+        if rec.get("interrupted"):
+            rec["result"] = ""
+        rec["started"] = _now()
         cwd = self._workdir(rec)
         cmd = self.command(rec)
         self._save(rec)
         threading.Thread(target=self._run, args=(rec, cmd, cwd), daemon=True).start()
-        where = f" on branch {rec['branch']}" if rec.get("branch") else ""
-        return f"Errand started{where}: {rec['title']}. Tally will hear the report when it is done."
 
     def _workdir(self, rec: dict) -> str:
         if rec["kind"] == "code":
             repo = self.cfg.errand_repo
             branch = f"errand/{rec['id']}"
             path = self.cfg.errand_worktrees / rec["id"]
+            if rec.get("worktree") and Path(rec["worktree"]).is_dir():  # restarted after a restart: keep its commits
+                return rec["worktree"]
             path.parent.mkdir(parents=True, exist_ok=True)
             proc = subprocess.run(["git", "-C", str(repo), "worktree", "add", "-b", branch, str(path), "HEAD"],
                                   capture_output=True, text=True)
@@ -274,6 +402,8 @@ class Errands:
         rules = KIND_RULES[rec["kind"]].format(branch=rec.get("branch", ""), spend=spend)
         if rec["kind"] == "session":
             rules += "\n\n" + BROWSER_RULES[self.browser()]
+        if rec.get("interrupted"):
+            rules += "\n\n" + RESUMED
         return (self.cfg.fill("# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n")
                 + f"{core}\n\n" + self.cfg.fill(f"{ERRAND_RULES}\n{rules}\n"))
 
@@ -336,7 +466,7 @@ class Errands:
             Path(rec["log"]).write_text(f"$ exit {code}\n--- stdout\n{out}\n--- stderr\n{err}\n", encoding="utf-8")
         except OSError:
             pass
-        result, failed = "", code != 0
+        result, failed, data = "", code != 0, None
         try:
             data = json.loads(out)
             result = str(data.get("result") or "")
@@ -344,7 +474,12 @@ class Errands:
             rec["cost_usd"] = data.get("total_cost_usd")
             rec["turns"] = data.get("num_turns")
         except (ValueError, AttributeError):
+            data = None
             result = (out or "").strip()[-4000:]
+        try:
+            self._record_cost(rec, data)
+        except Exception:  # noqa: BLE001 - a cost that cannot be counted never loses the report
+            pass
         if result.lstrip().startswith(BROWSER_MISSING):  # the run had no browser and stopped, as told
             failed = True
             rec["browser_missing"] = True
@@ -357,8 +492,22 @@ class Errands:
         rec.update(status="failed" if failed else "done", finished=_now(), result=result)
         with self.lock:
             self._save(rec)
+        if self.on_finish:
+            try:
+                self.on_finish()
+            except Exception:  # noqa: BLE001 - the scheduler's own timer tries again
+                pass
 
     # ---------- for Tally ----------
+
+    @staticmethod
+    def cost_line(rec: dict) -> str:
+        """'about $2.61 (1.2M tokens), an estimate from API prices', or "" when it was not measured."""
+        if not isinstance(rec.get("est_usd"), (int, float)):
+            return ""
+        n = usage.total_tokens(rec.get("tokens") or {})
+        size = f"{n / 1_000_000:.1f}M" if n >= 1_000_000 else f"{n / 1000:.0f}K" if n >= 1000 else str(n)
+        return f"about ${rec['est_usd']:.2f} ({size} tokens), {usage.ESTIMATE_NOTE}"
 
     def summary(self, rec: dict, full: bool = False) -> str:
         head = f"Errand {rec['id']} ({rec['kind']}): {rec.get('title', '')}. Status: {rec.get('status')}."
@@ -366,6 +515,10 @@ class Errands:
             head += f" Branch: {rec['branch']}."
         if rec.get("commits") is not None:
             head += f" Commits: {len(rec['commits'])}."
+        if self.cost_line(rec):
+            head += f" Cost: {self.cost_line(rec)}."
+        if rec.get("status") == "scheduled" and rec.get("interrupted"):
+            head += f"\n{rec.get('result') or REQUEUED}"
         if rec.get("status") in ("done", "failed"):
             text = rec.get("result") or "(no report)"
             if not full and len(text) > 1500:

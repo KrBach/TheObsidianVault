@@ -123,6 +123,16 @@ TOOLS = [
         "inputSchema": _schema({}, []),
     },
     {
+        "name": "queue_status",
+        "description": (
+            "Read-only: the usage meter (the current 5-hour block and today, against OWNER's budget and cap; an "
+            "estimate from API prices, not the plan's accounting), the errand running now, and the errands OWNER "
+            "approved 'when there's room', in the order they will start, each with its projected cost and why it "
+            "waits. You cannot start, stop or reorder errands; only OWNER can, in the ledger."
+        ),
+        "inputSchema": _schema({}, []),
+    },
+    {
         "name": "errand_report",
         "description": "The full report of one errand.",
         "inputSchema": _schema({"id": {**S, "description": "The errand id."}}, ["id"]),
@@ -307,6 +317,10 @@ def call(ledger: Ledger, name: str, args: dict) -> str:
     elif name == "list_errands":
         recs = Errands(ledger.cfg).all()[:15]
         return "\n".join(Errands(ledger.cfg).summary(r).split("\n")[0] for r in recs) or "No errands yet."
+    elif name == "queue_status":
+        from .scheduler import queue_status
+        from .usage import Meter
+        return queue_status(ledger.cfg, Errands(ledger.cfg), Meter(ledger.cfg))
     elif name == "errand_report":
         errands = Errands(ledger.cfg)
         rec = errands.get(args.get("id", ""))

@@ -128,11 +128,12 @@ def insert_in_section(doc: str, section: str, line: str, before: str | None = No
 
 
 class Ledger:
-    def __init__(self, cfg: Config, on_errand=None):
+    def __init__(self, cfg: Config, on_errand=None, on_schedule=None):
         global _TZ
         _TZ = getattr(cfg, "timezone", "") or ""
         self.cfg = cfg
         self.on_errand = on_errand  # starts an approved errand (the game sets this; the MCP server does not)
+        self.on_schedule = on_schedule  # queues an approved errand for when there is room (the game only)
         self.root = cfg.core_dir.resolve() if cfg.core_dir else None
         self.mode = cfg.writes_mode
         self.state = cfg.state_dir
@@ -308,17 +309,23 @@ class Ledger:
             raise LedgerError("that change is no longer pending")
         return f, json.loads(f.read_text(encoding="utf-8"))
 
-    def approve(self, op_id: str) -> str:
+    def approve(self, op_id: str, when: str = "now") -> str:
+        """Approve a pending change. For an errand, `when` is "now" (start it at once) or "room"
+        (put it in the queue, to start when the usage meter says it fits)."""
         f, op = self._take(op_id)
         if op["kind"] == "errand":
-            if not self.on_errand:
+            if when not in ("now", "room"):
+                raise LedgerError('an errand runs "now" or "when there\'s room"')
+            start = self.on_errand if when == "now" else self.on_schedule
+            if not start:
                 raise LedgerError("errands can only be started from the game")
             try:
-                msg = self.on_errand(op)
+                msg = start(op)
             except Exception as e:  # stays pending, so the owner can approve it again later
-                raise LedgerError(f"the errand did not start: {e}")
+                raise LedgerError(f"the errand did not {'start' if when == 'now' else 'go in the queue'}: {e}")
             f.unlink()
-            self._log({"event": "errand started", "file": op["file"], "summary": op.get("summary")})
+            self._log({"event": "errand started" if when == "now" else "errand scheduled", "file": op["file"],
+                       "summary": op.get("summary")})
             return msg
         self.apply(op)
         f.unlink()

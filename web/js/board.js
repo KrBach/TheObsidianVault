@@ -31,7 +31,7 @@ function el(tag, cls, text) {
   return e;
 }
 
-const LABEL = { link: "link", report: "errand", note: "note", image: "image", page: "page" };
+const LABEL = { link: "link", report: "errand", note: "note", image: "image", page: "page", queue: "queue" };
 
 function when(t) {
   if (!t) return "";
@@ -48,8 +48,9 @@ function renderList() {
     const row = el("button", "board-item");
     row.type = "button";
     const status = it.kind === "report" && it.status !== "done" ? ` · ${it.status}` : "";
+    const stamp = it.updated ? ` · ${when(it.updated)}` : "";
     row.append(el("span", "kind", LABEL[it.kind] || it.kind), el("span", "file", it.title),
-      el("span", "sum", `${it.where || ""}${status} · ${when(it.updated)}`));
+      el("span", "sum", `${it.where || ""}${status}${stamp}`));
     row.addEventListener("click", () => show(it));
     list.append(row);
   }
@@ -82,12 +83,18 @@ async function show(it) {
   const text = el("div", "board-text");
   view.append(text);
   try {
+    if (it.kind === "queue") { // read-only here: the order is set in the ledger (p)
+      const q = await (await fetch("/api/queue")).json();
+      text.innerHTML = renderMarkdown(`# Errand queue\n\n${q.text.split("\n").join("\n\n")}\n\n_Approve, reorder or start errands in the ledger (p)._`);
+      return;
+    }
     if (it.kind === "report") {
       const r = await (await fetch(`/api/board/report/${it.id}`)).json();
       const head = [`**Errand (${r.kind}):** ${r.title}`, `**Status:** ${r.status}`];
       if (r.branch) head.push(`**Branch:** \`${r.branch}\`${r.commits ? ` (${r.commits.length} commit${r.commits.length === 1 ? "" : "s"})` : ""}`);
-      if (r.cost_usd != null) head.push(`**Cost:** $${Number(r.cost_usd).toFixed(2)}`);
-      const body = r.status === "running" ? "_Still running._" : (r.result || "(no report)");
+      if (r.cost_line) head.push(`**Cost:** ${r.cost_line}`);
+      else if (r.cost_usd != null) head.push(`**Cost:** $${Number(r.cost_usd).toFixed(2)} (Claude Code's own figure)`);
+      const body = r.status === "running" ? "_Still running._" : r.status === "scheduled" ? "_Scheduled: waiting for room in the queue._" : (r.result || "(no report)");
       text.innerHTML = renderMarkdown(`${head.join("\n")}\n\n${body}\n\n# Brief\n${r.brief}`);
     } else {
       text.innerHTML = renderMarkdown(await (await fetch(`/api/board/file/${it.id}`)).text());
@@ -131,7 +138,8 @@ async function checkErrands() {
   let running = false;
   for (const e of list) {
     const before = known.get(e.id);
-    if (before === undefined && e.status === "running" && known.size) {
+    // newly approved, or a scheduled one the queue just started
+    if (e.status === "running" && ((before === undefined && known.size) || before === "scheduled")) {
       window.dispatchEvent(new CustomEvent("vault:errand-out", { detail: e }));
     }
     if (before === "running" && e.status !== "running") {
@@ -142,7 +150,7 @@ async function checkErrands() {
       if (isOpenFlag) refresh();
     }
     known.set(e.id, e.status);
-    if (e.status === "running") running = true;
+    if (e.status === "running" || e.status === "scheduled") running = true; // keep watching while the queue holds one
   }
   clearTimeout(polling);
   if (running) polling = setTimeout(checkErrands, 20000);

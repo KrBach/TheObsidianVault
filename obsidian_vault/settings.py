@@ -1,8 +1,8 @@
-"""The menu's Settings window (owner only): the vault folders and the errands browser.
+"""The menu's Settings window (owner only): the vault folders, the errands browser and the usage limits.
 
 What is set here goes into the local config file at once (config.write_local), outside the repo:
-[tally] core_dir (the Private vault), [tally] work_dir (the Work vault, optional) and
-[errands] browser. A folder is only accepted if it exists. Paths are shown to the owner only,
+[tally] core_dir (the Private vault), [tally] work_dir (the Work vault, optional),
+[errands] browser, and [usage] block_budget and daily_cap. A folder is only accepted if it exists. Paths are shown to the owner only,
 and messages never repeat a path: the owner just typed it, and a message may end up in a log.
 """
 
@@ -30,6 +30,8 @@ def view(cfg) -> dict:
         "work_dir": folder(cfg.work_dir),
         "browser": cfg.errand_browser,
         "browsers": list(BROWSERS),
+        "block_budget": cfg.usage_block_budget,
+        "daily_cap": cfg.usage_daily_cap,
         "config_file": short_path(cfg.config_path) if cfg.config_path else "",
     }
 
@@ -79,11 +81,27 @@ def save(cfg, data: dict) -> dict:
         if b != cfg.errand_browser:
             errands["browser"] = b
             changed.append("browser")
+    usage = {}
+    for key, attr, label in (("block_budget", "usage_block_budget", "block budget"),
+                             ("daily_cap", "usage_daily_cap", "daily cap")):
+        if key not in data:
+            continue
+        try:
+            v = round(float(data[key]), 2)
+        except (TypeError, ValueError):
+            raise SettingsError(f"the {label} must be a number of dollars")
+        if not 0 <= v <= 1000:
+            raise SettingsError(f"the {label} must be between $0 and $1000")
+        if v != getattr(cfg, attr):
+            usage[key] = v
+            changed.append(key)
     try:
         if tally:
             write_local(cfg, "tally", tally)
         if errands:
             write_local(cfg, "errands", errands)
+        if usage:
+            write_local(cfg, "usage", usage)
     except ConfigError as e:
         raise SettingsError(str(e)) from None
     # the running game takes the new values at once
@@ -93,4 +111,8 @@ def save(cfg, data: dict) -> dict:
         cfg.work_dir = Path(os.path.expanduser(tally["work_dir"])) if tally["work_dir"] else None
     if "browser" in errands:
         cfg.errand_browser = errands["browser"]
+    if "block_budget" in usage:
+        cfg.usage_block_budget = usage["block_budget"]
+    if "daily_cap" in usage:
+        cfg.usage_daily_cap = usage["daily_cap"]
     return {"changed": changed, "notes": notes}
