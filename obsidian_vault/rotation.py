@@ -21,12 +21,12 @@ turn was.
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from . import atomic
 from .names import local_now
 
 HANDOFF_FILE = "handoff.md"
@@ -52,10 +52,7 @@ class HandoffError(Exception):
 
 
 def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic.write_text(path, text)
 
 
 class Handoff:

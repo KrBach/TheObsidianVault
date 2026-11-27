@@ -28,10 +28,10 @@ creatures.brass in world/tiles.json.
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 
+from . import atomic
 from .config import REPO_ROOT
 
 TALK_SKETCH = REPO_ROOT / "context" / "brass-talk.md"
@@ -82,10 +82,7 @@ class Brass:
         return {"errands": {}}
 
     def _write(self, data: dict) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_name(f".{self.file.name}.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.file)
+        atomic.write_text(self.file, json.dumps(data, ensure_ascii=False))
 
     def update(self, records: list[dict]) -> dict:
         """Brass's state from the errand records (a code errand gets its record when OWNER approves it)."""
@@ -202,10 +199,7 @@ class BrassTalk:
 
     def _remember(self, said: str, reply: str) -> None:
         talk = (self.history() + [{"said": said[:600], "reply": reply[:1200], "time": time.time()}])[-self.KEEP:]
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_name(f".{self.file.name}.tmp")
-        tmp.write_text(json.dumps(talk, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.file)
+        atomic.write_text(self.file, json.dumps(talk, ensure_ascii=False))
 
     def system(self) -> str:
         try:

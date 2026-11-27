@@ -30,6 +30,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import atomic
 from .config import BROWSER_APPS, Config
 from .persona import load_core
 from . import usage
@@ -161,10 +162,7 @@ class Errands:
             return None
 
     def _save(self, rec: dict) -> None:
-        self.dir.mkdir(parents=True, exist_ok=True)
-        tmp = self._path(rec["id"]).with_suffix(".tmp")
-        tmp.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(self._path(rec["id"]))
+        atomic.write_text(self._path(rec["id"]), json.dumps(rec, ensure_ascii=False, indent=1))
 
     def all(self) -> list[dict]:
         if not self.dir.is_dir():
