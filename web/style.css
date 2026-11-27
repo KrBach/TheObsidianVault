@@ -99,6 +99,13 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 .ledger-item .file { color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ledger-item .sum { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ledger-item.stale .kind { color: var(--warn); }
+#ledger-queue { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.queue-item { flex-direction: row; align-items: center; gap: 6px; cursor: default; }
+.queue-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.queue-text .sum { white-space: normal; }
+.queue-moves { display: flex; flex-direction: column; gap: 2px; }
+.queue-moves button { background: #120c1d; border: 1px solid var(--line); color: var(--text); font: inherit; font-size: 10px; padding: 0 5px; cursor: pointer; }
+.queue-moves button:disabled { opacity: 0.35; cursor: default; }
 .small { font-size: 11px; margin-top: 6px; }
 #review { position: absolute; inset: 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(10, 6, 16, 0.96); border: 1px solid var(--accent); padding: 10px; z-index: 5; }
 .review-head { display: flex; justify-content: space-between; color: var(--accent); }

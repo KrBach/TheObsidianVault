@@ -14,7 +14,7 @@ from .board import Board, BoardError
 from .character import CharacterError, portrait_file
 from . import character, ledger as ledger_mod, settings
 from .brains import Brain, make_brain, make_guest_brain, write_mcp_config
-from .errands import Errands
+from .errands import ErrandError, Errands
 from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
@@ -22,7 +22,9 @@ from .persona import Persona, guest_shelves, load_guest_persona, load_persona, v
 from .rotation import Rotation
 from .brass import Brass, BrassTalk
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
+from .scheduler import Scheduler, queue_status, queue_view
 from .tick import Ticker
+from .usage import Meter
 from .vellum import VellumParser, tile_at
 from .world import World, WorldError
 
@@ -34,13 +36,15 @@ class Game:
         self.cfg = cfg
         self.persona: Persona = load_persona(cfg)
         self.brain: Brain = make_brain(cfg, self.persona)
-        self.errands = Errands(cfg)
-        for title in self.errands.close_interrupted():  # cut off by the last restart: never coming back
-            print(f"  errand interrupted by the restart, marked failed: {title}")
+        self.meter = Meter(cfg)
+        self.errands = Errands(cfg, on_finish=lambda: self.scheduler.poke())
+        self.scheduler = Scheduler(cfg, self.errands, self.meter)  # its timer starts in main()
+        for title in self.errands.close_interrupted():  # cut off by the last restart
+            print(f"  errand interrupted by the restart: {title}")
         self.board = Board(cfg)
-        self.ledger = Ledger(cfg, on_errand=self.errands.start)
+        self.ledger = Ledger(cfg, on_errand=self.errands.start, on_schedule=self.schedule_errand)
         self.moves = MoveLog(cfg.state_dir, cfg.timezone, cfg.fill)
-        self.ticker = Ticker(cfg, self.brain, self.errands)
+        self.ticker = Ticker(cfg, self.brain, self.errands, queue_note=self.tick_queue_note)
         self.layout = World(cfg.state_dir)
         self.cat = Cat(cfg.state_dir)
         self.vellum = VellumParser(self.cat, companion=cfg.companion)
@@ -108,6 +112,30 @@ class Game:
             self.brain.mcp_config = write_mcp_config(self.cfg)  # the vault tools get the new folder
         if "core_dir" in changed:
             self.brain.reset()  # a conversation belongs to the folder it ran in; start a fresh one
+
+    def schedule_errand(self, op: dict) -> str:
+        """Approved "when there's room": into the queue, and a check soon (the scheduler starts it if it fits)."""
+        msg = self.errands.schedule(op)
+        self.scheduler.poke()
+        return msg
+
+    def queue_text(self) -> str:
+        return self.cfg.fill(queue_status(self.cfg, self.errands, self.meter))
+
+    def tick_queue_note(self) -> str:
+        """For a tick: the meter, and the queue when anything is in it. Read-only, like queue_status."""
+        if self.errands.running() or self.errands.scheduled():
+            return queue_status(self.cfg, self.errands, self.meter)
+        return self.meter.line()
+
+    def pending_with_estimates(self) -> list[dict]:
+        """The ledger's pending changes, with the projected cost on each errand."""
+        ops = self.ledger.pending()
+        for op in ops:
+            if op.get("kind") == "errand":
+                est, runs = self.errands.projection(op.get("errand_kind", ""))
+                op["estimate"], op["estimate_runs"] = round(est, 2), runs
+        return ops
 
     def brass_state(self) -> dict:
         """Where Brass should be, from the errand records (see Brass.update)."""
@@ -191,7 +219,7 @@ def make_handler(game: Game):
 
         # Guests may walk around and talk to Tally; the owner's things stay theirs.
         OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character", "/api/settings",
-                      "/api/brass", "/api/quit")
+                      "/api/brass", "/api/queue", "/api/quit")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -219,7 +247,15 @@ def make_handler(game: Game):
             if not role:
                 return
             if self.path == "/api/board":
-                return self._json({"items": game.board.listing(game.errands.all())})
+                items = game.board.listing(game.errands.all())
+                if game.cfg.errands:  # the queue's own paper: what runs, what waits, and the meter
+                    v = queue_view(game.cfg, game.errands, game.meter)
+                    items.insert(0, {"id": "queue", "title": "Errand queue", "kind": "queue",
+                                     "where": f"{len(v['running'])} running · {len(v['scheduled'])} scheduled",
+                                     "updated": 0})
+                return self._json({"items": items})
+            if self.path == "/api/queue":  # owner only (OWNER_ONLY)
+                return self._json({**queue_view(game.cfg, game.errands, game.meter), "text": game.queue_text()})
             if self.path.startswith("/api/board/file/"):
                 try:
                     body, ctype = game.board.open_file(self.path.rsplit("/", 1)[1])
@@ -230,8 +266,10 @@ def make_handler(game: Game):
                 rec = game.errands.get(self.path.rsplit("/", 1)[1])
                 if not rec:
                     return self._json({"error": "no such errand"}, HTTPStatus.NOT_FOUND)
-                return self._json({k: rec.get(k) for k in ("id", "kind", "title", "brief", "status", "result",
-                                                          "branch", "commits", "cost_usd", "approved", "finished")})
+                return self._json({**{k: rec.get(k) for k in ("id", "kind", "title", "brief", "status", "result",
+                                                            "branch", "commits", "cost_usd", "est_usd", "tokens",
+                                                            "approved", "finished")},
+                                   "cost_line": game.errands.cost_line(rec)})
             if self.path == "/api/errands":
                 return self._json({"errands": [{k: r.get(k) for k in ("id", "kind", "title", "status")}
                                                for r in game.errands.all()[:20]]})
@@ -245,7 +283,7 @@ def make_handler(game: Game):
             if self.path == "/api/settings":  # owner only (OWNER_ONLY): these are the owner's paths
                 return self._json(settings.view(game.cfg))
             if self.path == "/api/pending":
-                return self._json({"mode": game.cfg.writes_mode, "pending": game.ledger.pending(),
+                return self._json({"mode": game.cfg.writes_mode, "pending": game.pending_with_estimates(),
                                    "size": game.ledger.size_report(for_tally=False)})
             return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
 
@@ -373,13 +411,23 @@ def make_handler(game: Game):
                     print(f"  tick failed: {result['error']}")
                 return self._json(result)
 
+            if self.path.startswith("/api/queue/"):  # OWNER's priority: one place up or down
+                parts = self.path.split("/")  # ["", "api", "queue", id, "up" | "down"]
+                if len(parts) != 5 or parts[4] not in ("up", "down"):
+                    return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                try:
+                    game.errands.move(parts[3], parts[4])
+                except ErrandError as e:
+                    return self._json({"ok": False, "error": str(e)}, HTTPStatus.CONFLICT)
+                return self._json({"ok": True, **queue_view(game.cfg, game.errands, game.meter)})
+
             if self.path.startswith("/api/pending/"):
                 parts = self.path.split("/")  # ["", "api", "pending", id, action]
                 if len(parts) != 5 or parts[4] not in ("approve", "reject"):
                     return self._json({"error": "not found"}, HTTPStatus.NOT_FOUND)
                 try:
                     if parts[4] == "approve":
-                        msg = game.ledger.approve(parts[3])
+                        msg = game.ledger.approve(parts[3], "room" if payload.get("when") == "room" else "now")
                     else:
                         game.ledger.reject(parts[3])
                         msg = "Rejected. Nothing was written."
@@ -425,6 +473,11 @@ def make_handler(game: Game):
                         f"them (oldest first). The ones made between conversations come from your short check-ins, "
                         f"with a brief sketch of you rather than this whole conversation; they are still your "
                         f"choices and your reasons.\n{memory}\n</your_recent_moves>\n{text}")
+            if game.cfg.errands:  # the usage meter, one line, after the cap on what the browser sends
+                try:
+                    where = f"{where} {game.meter.line()}".strip()
+                except Exception:  # noqa: BLE001 - a meter that cannot read never stops the talk
+                    pass
             where = f"{where} {rot.size_line()}".strip()  # the conversation's approximate size, for Tally
             text = f"<game_state>{where}</game_state>\n{text}"
             text, injected = rot.first_turn_text(text)  # Tally's own handoff, once, in a fresh conversation
@@ -517,6 +570,10 @@ def main() -> None:
         print(f"  tick: Tally decides where to go every {cfg.tick_minutes:g} min ({cfg.tick_model or 'default model'})")
     else:
         print("  tick: off")
+    if cfg.errands:
+        game.scheduler.start()  # plain code on a timer: starts scheduled errands when there is room
+        print(f"  errand queue: checks every {game.scheduler.interval / 60:g} min; block budget "
+              f"${cfg.usage_block_budget:g}, daily cap ${cfg.usage_daily_cap:g} (estimates at API prices)")
     idle = f"after {cfg.idle_minutes:g} min without input" if cfg.idle_minutes > 0 else "never when idle"
     limit = f", past {cfg.context_limit_tokens // 1000}K tokens" if cfg.context_limit_tokens else ""
     print(f"  conversation: closes on Quit, at the front door, at 04:00, {idle}{limit} (with a handoff)")

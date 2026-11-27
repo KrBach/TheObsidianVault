@@ -1,5 +1,6 @@
-// The Settings window (owner only): the vault folders, the errands browser and the idle time after
-// which the conversation with Tally closes (with a handoff; the game keeps running). Saved by the server
+// The Settings window (owner only): the vault folders, the errands browser, the idle time after
+// which the conversation with Tally closes (with a handoff; the game keeps running) and the usage
+// limits (block budget, daily cap) the errand queue keeps to. Saved by the server
 // at once in the local config file, outside the game's folder, so an update never loses them.
 // The server refuses this to a guest, and the menu hides it for one.
 
@@ -20,6 +21,8 @@ function fill(s) {
   sel.textContent = "";
   for (const b of s.browsers) sel.append(Object.assign(document.createElement("option"), { value: b, textContent: b }));
   sel.value = s.browser;
+  $("set-block").value = s.block_budget ?? "";
+  $("set-cap").value = s.daily_cap ?? "";
   $("set-idle").value = s.idle_minutes ?? 30;
   $("set-file").textContent = s.config_file ? `Saved in ${s.config_file}, outside the game's folder.` : "";
 }
@@ -46,6 +49,8 @@ async function save(e) {
   msg.textContent = "";
   const body = { core_dir: $("set-core").value.trim(), work_dir: $("set-work").value.trim(), browser: $("set-browser").value,
     idle_minutes: $("set-idle").value.trim() === "" ? 30 : Number($("set-idle").value) };
+  if ($("set-block").value !== "") body.block_budget = Number($("set-block").value);
+  if ($("set-cap").value !== "") body.daily_cap = Number($("set-cap").value);
   try {
     const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json().catch(() => ({}));

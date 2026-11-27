@@ -62,10 +62,16 @@ function show(id) {
   const box = $("review");
   box.hidden = false;
   $("review-title").textContent = `${kindLabel(op)} · ${op.file}`;
-  $("review-why").textContent = op.summary || "";
+  const errand = op.kind === "errand";
+  const est = errand && op.estimate != null
+    ? ` · projected about $${Number(op.estimate).toFixed(2)} (${op.estimate_runs ? `average of ${op.estimate_runs}` : "starting guess"}; an estimate from API prices)`
+    : "";
+  $("review-why").textContent = (op.summary || "") + est;
   renderDiff($("review-diff"), op);
   $("review-approve").disabled = !!op.stale;
-  $("review-approve").textContent = op.kind === "errand" ? "Approve and send" : "Approve and write";
+  $("review-approve").textContent = errand ? "Run now" : "Approve and write";
+  $("review-schedule").hidden = !errand;
+  $("review-schedule").disabled = !!op.stale;
   $("review-msg").textContent = op.stale ? fill("This change no longer applies. Reject it and ask Tally again.") : "";
 }
 
@@ -89,12 +95,14 @@ export function openList() {
 
 export function isOpen() { return open !== null || !$("ledger-pop").hidden; }
 
-async function decide(action) {
+async function decide(action, when = "now") {
   if (!open) return;
   const id = open;
-  $("review-approve").disabled = $("review-reject").disabled = true;
+  $("review-approve").disabled = $("review-reject").disabled = $("review-schedule").disabled = true;
   try {
-    const r = await fetch(`/api/pending/${id}/${action}`, { method: "POST" });
+    const r = await fetch(`/api/pending/${id}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ when }),
+    });
     const data = await r.json();
     if (data.ok) {
       onLog(action === "approve" ? `You sign the ledger. ${data.message}` : "You strike the entry out. Nothing was written.", "action");
@@ -114,6 +122,44 @@ async function decide(action) {
   }
 }
 
+// The queue: errands approved "when there's room". They start on their own, one at a time, when the
+// projected cost fits the block budget and the daily cap; the owner sets the order with ▲ and ▼.
+function renderQueue(q) {
+  const box = $("ledger-queue");
+  box.replaceChildren();
+  if (!q || (!q.running.length && !q.scheduled.length)) return;
+  box.append(el("div", "dim small", "QUEUE · " + q.usage));
+  for (const r of q.running) {
+    const row = el("div", "ledger-item");
+    row.append(el("span", "kind", `running · ${r.kind}`), el("span", "file", r.title),
+      el("span", "sum", `started ${r.started}, projected about $${r.estimate.toFixed(2)}`));
+    box.append(row);
+  }
+  q.scheduled.forEach((r, i) => {
+    const row = el("div", "ledger-item queue-item");
+    const why = r.waiting ? `waiting for room, next check at ${r.next_check}: ${r.waiting}`
+      : r.next_check ? `next check at ${r.next_check}` : "waiting for the first check";
+    const basis = r.estimate_runs ? `average of ${r.estimate_runs}` : "starting guess";
+    const text = el("div", "queue-text");
+    text.append(el("span", "kind", `${r.place}. scheduled · ${r.kind}${r.interrupted ? " · back after a restart" : ""}`),
+      el("span", "file", r.title), el("span", "sum", `about $${r.estimate.toFixed(2)} (${basis}) · ${why}`));
+    const moves = el("div", "queue-moves");
+    for (const [dir, label] of [["up", "▲"], ["down", "▼"]]) {
+      const b = el("button", "", label);
+      b.type = "button";
+      b.title = dir === "up" ? "Start this one sooner" : "Start this one later";
+      b.disabled = dir === "up" ? i === 0 : i === q.scheduled.length - 1;
+      b.addEventListener("click", async () => {
+        const res = await fetch(`/api/queue/${r.id}/${dir}`, { method: "POST" }).then((x) => x.json()).catch(() => ({}));
+        if (res.ok) renderQueue(res); else onLog(`The queue would not move: ${res.error || "no answer"}`, "err");
+      });
+      moves.append(b);
+    }
+    row.append(text, moves);
+    box.append(row);
+  });
+}
+
 export async function refresh() {
   try {
     const r = await fetch("/api/pending");
@@ -121,6 +167,7 @@ export async function refresh() {
     items = data.pending;
     renderList(data.mode, data.size);
     if (open) show(open);
+    fetch("/api/queue").then((x) => (x.ok ? x.json() : null)).then(renderQueue).catch(() => {});
     return items.length;
   } catch {
     return 0;
@@ -134,6 +181,7 @@ export function initLedger(mode, log) {
   $("ledger-flag").addEventListener("click", openList);
   $("ledger-close").addEventListener("click", () => { $("ledger-pop").hidden = true; });
   $("review-approve").addEventListener("click", () => decide("approve"));
+  $("review-schedule").addEventListener("click", () => decide("approve", "room"));
   $("review-reject").addEventListener("click", () => decide("reject"));
   $("review-close").addEventListener("click", close);
   refresh();

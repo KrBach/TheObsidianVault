@@ -313,6 +313,7 @@ class ServerRotationTest(unittest.TestCase):
         self.game.auth.set_password("supersecret")
         self.brain = FakeBrain(self.game.cfg.state_dir)
         self.game.brain = self.game.rotation.brain = self.brain
+        self.game.meter.line = lambda: ""  # the usage meter would read this machine's real Claude Code logs
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.game))
         self.game.server = self.server
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

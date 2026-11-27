@@ -96,6 +96,12 @@ def build_prompt(world: dict, payload: dict, memory: str = "", cat: str = "") ->
         lines.append("")
         lines.append("Your own recent choices about where to be (oldest first):")
         lines.append(memory)
+    queue = payload.get("queue")
+    if isinstance(queue, str) and queue:
+        lines.append("")
+        lines.append("Errands and usage, for your information only (a check-in cannot start, stop or reorder errands; "
+                     "only OWNER can):")
+        lines.append(queue[:1500])
     thought = payload.get("thought")
     if isinstance(thought, str) and thought:
         lines.append("")
@@ -267,8 +273,9 @@ class LastTalk:
 
 
 class Ticker:
-    def __init__(self, cfg, brain, errands=None):
+    def __init__(self, cfg, brain, errands=None, queue_note=None):
         self.cfg, self.brain = cfg, brain
+        self.queue_note = queue_note  # the usage meter and the errand queue, as text (read-only)
         self.lock = threading.Lock()
         self.thoughts = Thoughts(cfg, errands)
         self.last_talk = LastTalk(cfg.state_dir)
@@ -286,6 +293,11 @@ class Ticker:
             return {"go": "stay", "at": None, "say": "", "skipped": "busy"}
         try:
             payload = {**payload, "talk": self.last_talk.get(), "thought": self.thoughts.note_for_tick()}
+            if self.queue_note:
+                try:
+                    payload["queue"] = self.queue_note()
+                except Exception:  # noqa: BLE001 - a meter that cannot read never stops a tick
+                    payload.pop("queue", None)
             if isinstance(payload.get("cat"), dict):
                 try:
                     self.cat.save(payload["cat"])

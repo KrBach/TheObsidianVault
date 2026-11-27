@@ -197,6 +197,11 @@ class Config:
     errand_browser: str = "safari"
     # The process that must be running before a session errand starts; "" = the browser's usual name.
     errand_browser_app: str = ""
+    # The usage meter and the errand queue ([usage]): estimates at API prices, not the plan's accounting.
+    usage_block_budget: float = 6.0  # dollars a 5-hour block may reach before scheduled errands wait
+    usage_daily_cap: float = 12.0  # dollars a day may reach before scheduled errands wait
+    usage_logs_dir: Path | None = None  # Claude Code's local logs; None = ~/.claude/projects
+    queue_check_minutes: float = 5.0  # how often the scheduler looks for room
     # The notice board: what the game may show. Vault folders (relative to core_dir), read-only.
     board_folders: list[str] = field(default_factory=lambda: ["Claude outputs"])
     # Who is who ([names]): the vault's owner and their companion. Nothing personal lives in the code.
@@ -317,6 +322,16 @@ def load_config(path: Path | None = None) -> Config:
         browser = "off"
     cfg.errand_browser = browser
     cfg.errand_browser_app = str(errands.get("browser_app", "")).strip()
+    usage = data.get("usage", {})
+    for key, attr, default in (("block_budget", "usage_block_budget", 6.0), ("daily_cap", "usage_daily_cap", 12.0),
+                               ("check_minutes", "queue_check_minutes", 5.0)):
+        try:
+            setattr(cfg, attr, max(0.0, float(usage.get(key, default))))
+        except (TypeError, ValueError):
+            notes.append(f"note: usage.{key} is not a number; using {default:g}.")
+            setattr(cfg, attr, default)
+    if usage.get("logs_dir"):
+        cfg.usage_logs_dir = _expand(usage["logs_dir"])
     cfg.board_folders = list(data.get("board", {}).get("folders", ["Claude outputs"]))
     from .names import DEFAULT_COMPANION, DEFAULT_OWNER, clean_name
     names = data.get("names", {})

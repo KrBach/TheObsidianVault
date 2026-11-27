@@ -128,6 +128,18 @@ browser = "safari"  # also in the game: Esc → Settings
 # The process to check for; empty = "Safari" or "Google Chrome", to match the browser.
 browser_app = ""
 
+[usage]
+# The usage meter and the errand queue. The game reads Claude Code's local logs (token counts, model
+# and timestamps only, never what was said) and prices them at API rates: an estimate, not your plan's
+# own accounting. Tally sees one line of it; errands approved "when there's room" wait until their
+# projected cost fits both of these (also in the game: Esc → Settings).
+block_budget = 6.0   # dollars per 5-hour block
+daily_cap = 12.0     # dollars per day
+# How often the queue looks for room, in minutes.
+check_minutes = 5
+# Where Claude Code keeps its logs; empty = ~/.claude/projects.
+# logs_dir = "~/.claude/projects"
+
 [board]
 # Vault folders the notice board shows (read-only): notes, images and HTML pages.
 # Errand reports and links Tally pins are always there.
