@@ -132,7 +132,8 @@ PUBLISH_PROMPT = """Publish one file to an existing claude.ai Artifact, and do n
 File: {file}
 Artifact: {url}
 
-Call the Artifact tool with action "publish", file_path set to the file and url set to the artifact.
+If the Artifact tool is listed only by name (a deferred tool), load it first with ToolSearch, query
+"select:Artifact". Then call the Artifact tool with action "publish", file_path set to the file and url set to the artifact.
 If that is refused because this session has not read the artifact, the refusal counts as the read:
 publish the same file to the same url again, unchanged. Do not read, edit or rewrite the file, and
 do not open any other file.
@@ -142,8 +143,12 @@ Answer with one line only: "{ok} <the artifact url>" when the publish went throu
 
 
 def publish_command(cfg, d: Dashboard) -> list[str]:
+    # In `claude -p` with a narrowed tool list, Artifact can come as a deferred tool: its name is listed
+    # but its schema only loads through ToolSearch. Without ToolSearch the run cannot call it at all
+    # (it answered "no Artifact tool in this run"), so ToolSearch always comes along.
+    tools = ",".join(dict.fromkeys([cfg.dashboard_publish_tool, "ToolSearch"]))
     cmd = [cfg.claude_path or "claude", "-p", "--output-format", "json",
-           "--tools", cfg.dashboard_publish_tool, "--allowedTools", cfg.dashboard_publish_tool,
+           "--tools", tools, "--allowedTools", tools,
            "--permission-mode", "dontAsk", "--strict-mcp-config"]
     if cfg.dashboard_publish_model:
         cmd += ["--model", cfg.dashboard_publish_model]

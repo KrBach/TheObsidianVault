@@ -146,7 +146,9 @@ class DashboardTest(unittest.TestCase):
         self.assertTrue(rec["result"].startswith("Data check done."))
         errand_call, publish_call = self.calls()
         argv = publish_call["argv"]
-        self.assertEqual(argv[argv.index("--tools") + 1], "Artifact")  # nothing else, no MCP servers
+        # Artifact, and ToolSearch to load it when it comes deferred; nothing else, no MCP servers.
+        self.assertEqual(argv[argv.index("--tools") + 1], "Artifact,ToolSearch")
+        self.assertIn("select:Artifact", publish_call["prompt"])
         self.assertIn("--strict-mcp-config", argv)
         self.assertEqual(argv[argv.index("--model") + 1], "haiku")
         self.assertIn(URL, publish_call["prompt"])
