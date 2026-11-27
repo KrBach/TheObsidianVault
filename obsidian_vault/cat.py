@@ -46,6 +46,14 @@ WALK_OFF = 0.25  # odds a pet ends with it walking off, for someone it barely kn
 FONDNESS = ((0.3, "keeps a polite distance from"), (0.5, "is getting used to"),
             (0.75, "seems fond of"), (1.01, "is very fond of"))
 
+# Laps. When Tally or OWNER sits (on a chair, couch, bench, cushion or the floor) and the cat is sleepy,
+# it may walk over and fall asleep on that lap: mostly if it is fond of them, rarely if friendly, never
+# if wary (the parser's tiers). On a lap it shares the sitter's cell, the one time it shares anyone's.
+# If the sitter gets up or moves, it hops down beside them, offended; that costs no affinity.
+TIERS = {"friendly_from": 0.3, "fond_from": 0.75}  # fallback; world/vellum-parser.json "tiers" wins
+LAP_ODDS = {"fond": 0.6, "friendly": 0.06, "wary": 0.0}  # each time it picks somewhere to sleep
+LAP_POSES = ("sit",)
+
 
 def fondness(value: float) -> str:
     """How the cat is with someone, in words (the numbers stay out of what Tally reads)."""
@@ -64,6 +72,53 @@ def stay_odds(value: float) -> float:
 def walk_off_odds(value: float) -> float:
     """Odds a pet ends with the cat walking off: lower for someone it likes, never zero."""
     return round(WALK_OFF * (1 - 0.6 * max(0.0, min(1.0, value))), 3)
+
+
+def tiers() -> dict:
+    """The affinity steps for wary, friendly and fond, from world/vellum-parser.json (one place for them)."""
+    try:
+        t = json.loads((REPO_ROOT / "world" / "vellum-parser.json").read_text(encoding="utf-8")).get("tiers", {})
+        return {k: float(t.get(k, v)) for k, v in TIERS.items()}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return dict(TIERS)
+
+
+def tier(value: float, steps_: dict | None = None) -> str:
+    """wary, friendly or fond, for an affinity."""
+    t = {**TIERS, **(steps_ or tiers())}
+    if value >= float(t["fond_from"]):
+        return "fond"
+    if value >= float(t["friendly_from"]):
+        return "friendly"
+    return "wary"
+
+
+def lap_odds(value: float, steps_: dict | None = None) -> float:
+    """Odds the sleepy cat picks this sitter's lap when it looks for somewhere to sleep."""
+    return LAP_ODDS[tier(value, steps_)]
+
+
+def lap_ok(mood: str, pose) -> bool:
+    """Only a sleepy cat goes to a lap, and only to someone sitting (pose "sit", or {"how": "sit"})."""
+    how = pose.get("how") if isinstance(pose, dict) else pose
+    return mood == "sleepy" and how in LAP_POSES
+
+
+def stays_on_lap(cat, sitter) -> bool:
+    """Still on the lap: the sitter is on the cat's cell and still sitting. Otherwise it hops down."""
+    if not isinstance(sitter, dict):
+        return False
+    c, s = _cell(cat), _cell(sitter)
+    return c is not None and c == s and lap_ok("sleepy", sitter.get("pose"))
+
+
+def lap_text(who: str, name: str) -> str:
+    """The cat on a lap, for Tally's game_state: "your" lap is Tally's."""
+    return f"{name} is asleep on your lap." if who == "tally" else f"{name} is asleep on OWNER's lap."
+
+
+def hop_down_text(name: str) -> str:
+    return f"{name} hops down, offended."
 
 
 def steps(a, b) -> int | None:
@@ -136,14 +191,18 @@ class Cat:
             mood = "hungry"
         elif mood == "hungry":
             mood = "sleepy"
+        lap = data.get("lap") if data.get("lap") in FOND_OF and data.get("asleep") else ""
         out = {"x": data.get("x"), "y": data.get("y"), "mood": mood, "asleep": bool(data.get("asleep")),
-               "on": str(data.get("on") or "")[:40], "fed_at": fed, "hungry": hungry,
+               "on": str(data.get("on") or "")[:40], "lap": lap, "fed_at": fed, "hungry": hungry,
                "hungry_in_minutes": 0 if hungry else round((fed + HUNGRY_AFTER - now) / 60), "name": self.name}
         if _cell(out) is None:
             out["x"] = out["y"] = None
         aff = {who: self.affinity(who, data) for who in FOND_OF}
         out["affinity"] = aff  # for the browser's odds; Tally reads the words
         out["stay_odds"] = {who: stay_odds(v) for who, v in aff.items()}
+        steps_ = tiers()
+        out["lap_odds"] = {who: lap_odds(v, steps_) for who, v in aff.items()}
+        out["hop_down_text"] = hop_down_text(self.name)
         out["fondness"] = {who: fondness(v) for who, v in aff.items()}
         out["fondness_text"] = (f"{self.name} {out['fondness']['tally']} you, and {out['fondness']['owner']} OWNER.")
         return out
@@ -188,6 +247,8 @@ class Cat:
             data["mood"] = mood
         data["asleep"] = bool(rec.get("asleep"))
         data["on"] = " ".join(str(rec.get("on") or "").split())[:40]
+        # on a lap: whose (the browser keeps it there only while they sit); asleep, or it is not a lap
+        data["lap"] = rec.get("lap") if rec.get("lap") in FOND_OF and data["asleep"] else ""
         data["saved_at"] = self.clock()
         self._write(data)
         return self.get()
@@ -236,7 +297,7 @@ class Cat:
         elif action == "feed":
             data = self._load()
             data["fed_at"] = self.clock()
-            data["mood"], data["asleep"] = "playful", False
+            data["mood"], data["asleep"], data["lap"] = "playful", False, ""
             data.setdefault("first_seen", data["fed_at"])
             self._write(data)
             res = {"text": f"The bowl by the fireplace is filled. {n} eats, then follows you about for a while.",
@@ -298,6 +359,13 @@ class Cat:
             return ""
         what = "asleep" if s["asleep"] else {"sleepy": "drowsy", "curious": "curious, looking about",
                                                "hungry": "hungry", "playful": "playful"}[s["mood"]]
+        if s["lap"]:
+            base = lap_text(s["lap"], s["name"])[:-1] + f", at ({s['x']},{s['y']})"
+            if s["lap"] == "tally":
+                return f"{base}. You can tend it with tend_cat. {s['fondness_text']}"
+            d = steps(tally_at, s)
+            near = "" if d is None else ", right next to you" if d <= 1 else f", {d} steps from you"
+            return f"{base}{near}. {s['fondness_text']}"
         line = f"{s['name']}, the vault cat, is at ({s['x']},{s['y']})" + (f", {s['on']}" if s["on"] else "") + f": {what}."
         if s["hungry"]:
             line += " It has not been fed for over three hours."

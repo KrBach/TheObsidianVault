@@ -533,6 +533,11 @@ function catText() {
   if (!c) return "";
   const r = roomAt(c.x, c.y), where = d.whereWord();
   const steps = Math.max(Math.abs(c.x - state.tally.x), Math.abs(c.y - state.tally.y)); // the same rule as steps() in cat.py
+  const fond = !isGuest() && d.fondnessText() ? ` ${d.fondnessText()}` : "";
+  if (c.lap) { // asleep on someone's lap: the words are lap_text() in cat.py
+    const near = c.lap === "tally" ? " You can tend it with tend_cat." : steps <= 1 ? " It is right next to you." : ` It is ${steps} steps from you.`;
+    return ` ${d.lapText()} In ${r ? r.name : "the vault"} at (${c.x},${c.y}).${near}${d.hungry() ? " It has not been fed for over three hours." : ""}${fond}`;
+  }
   return ` ${d.name}, the vault cat, is ${d.doingWord()}${where ? `, ${where}` : ""}, in ${r ? r.name : "the vault"} at (${c.x},${c.y}),` +
     (steps <= 1 ? " right next to you (you can tend it with tend_cat)." : ` ${steps} steps from you.`) +
     (d.hungry() ? " It has not been fed for over three hours." : "") +
