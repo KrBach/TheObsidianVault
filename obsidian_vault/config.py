@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import atomic
 from . import minitoml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -73,10 +74,7 @@ def home_form(p: Path) -> str:
 
 
 def _write_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    atomic.write_text(path, text)
 
 
 def fresh_config_text() -> str:

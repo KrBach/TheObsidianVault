@@ -21,11 +21,11 @@ The cat's name and look come from world/tiles.json (creatures.cat), not from cod
 from __future__ import annotations
 
 import json
-import os
 import random
 import time
 from pathlib import Path
 
+from . import atomic
 from .config import REPO_ROOT
 
 HUNGRY_AFTER = 3 * 3600  # seconds after a meal until the cat is hungry again
@@ -173,10 +173,7 @@ class Cat:
             return {}
 
     def _write(self, data: dict) -> None:
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_name(f".{self.file.name}.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.file)
+        atomic.write_text(self.file, json.dumps(data, ensure_ascii=False))
 
     def get(self) -> dict:
         """Where the cat is and how it is, as last saved, with hunger worked out from the clock."""

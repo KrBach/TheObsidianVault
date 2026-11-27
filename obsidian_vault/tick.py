@@ -13,6 +13,7 @@ import threading
 import time
 from datetime import datetime
 
+from . import atomic
 from .config import REPO_ROOT
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .moves import MoveLog
@@ -237,10 +238,7 @@ class Thoughts:
         data.setdefault("log", []).append({"errand": eid, "about": think["about"], "why": think.get("why", ""),
                                            "at": time.time()})
         data["log"] = data["log"][-50:]
-        self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
-        tmp = self.file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(self.file)
+        atomic.write_text(self.file, json.dumps(data, ensure_ascii=False, indent=1))
         return eid
 
 

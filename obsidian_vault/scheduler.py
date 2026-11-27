@@ -18,6 +18,7 @@ import json
 import threading
 import time
 
+from . import atomic
 from .errands import ErrandError, Errands
 from .usage import Meter, clock
 
@@ -67,10 +68,7 @@ class Scheduler:
 
     def _save(self, state: dict) -> None:
         try:
-            self.file.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.file.with_suffix(".tmp")
-            tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(self.file)
+            atomic.write_text(self.file, json.dumps(state, ensure_ascii=False))
         except OSError:
             pass
 
