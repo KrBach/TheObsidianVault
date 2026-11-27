@@ -186,6 +186,11 @@ class Config:
     errand_timeout_minutes: float = 45.0
     errand_max_running: int = 2
     errand_model: str = ""
+    # A model per errand kind ([errands] research_model / code_model / session_model); "" = errand_model.
+    errand_kind_models: dict = field(default_factory=dict)
+    # The core files an errand's system prompt carries ([errands] core_files); empty = the same as
+    # Tally's (tally.core_files). Every file rides along on every turn of the run, so a long one costs.
+    errand_core_files: list[str] = field(default_factory=list)
     errand_repo: Path = REPO_ROOT  # where "code" errands branch from (in a git worktree)
     errand_worktrees: Path = REPO_ROOT.parent / "TheObsidianVault-errands"
     errand_session_tools: list[str] = field(default_factory=lambda: list(DEFAULT_SESSION_TOOLS))
@@ -202,6 +207,11 @@ class Config:
     queue_check_minutes: float = 5.0  # how often the scheduler looks for room
     # The notice board: what the game may show. Vault folders (relative to core_dir), read-only.
     board_folders: list[str] = field(default_factory=lambda: ["Claude outputs"])
+    # Dashboards (dashboards.py): pages the game builds from a vault JSON file, and how they are published.
+    dashboards: dict = field(default_factory=dict)  # name -> {data, template, output, artifact}
+    dashboard_publish: str = "claude"  # "claude": a small claude -p run with only the Artifact tool; "off"
+    dashboard_publish_model: str = "haiku"
+    dashboard_publish_tool: str = "Artifact"
     # Who is who ([names]): the vault's owner and their companion. Nothing personal lives in the code.
     owner: str = "Owner"
     companion: str = "Tally"
@@ -314,6 +324,9 @@ def load_config(path: Path | None = None) -> Config:
     if errands.get("worktrees"):
         cfg.errand_worktrees = _expand(errands["worktrees"])
     cfg.errand_session_tools = list(errands.get("session_tools", DEFAULT_SESSION_TOOLS))
+    cfg.errand_kind_models = {k: str(errands[f"{k}_model"]).strip() for k in ("research", "code", "session")
+                              if str(errands.get(f"{k}_model", "")).strip()}
+    cfg.errand_core_files = [str(f) for f in errands.get("core_files", []) if str(f).strip()]
     browser = str(errands.get("browser", "safari")).strip().lower() or "off"
     if browser not in BROWSERS:
         notes.append(f'note: errands.browser "{browser[:20]}" is not one of {", ".join(BROWSERS)}; using "off".')
@@ -331,6 +344,22 @@ def load_config(path: Path | None = None) -> Config:
     if usage.get("logs_dir"):
         cfg.usage_logs_dir = _expand(usage["logs_dir"])
     cfg.board_folders = list(data.get("board", {}).get("folders", ["Claude outputs"]))
+    dash = data.get("dashboards", {})
+    if isinstance(dash, dict):
+        publish = str(dash.get("publish", "claude")).strip().lower() or "off"
+        if publish not in ("claude", "off"):
+            notes.append(f'note: dashboards.publish "{publish[:20]}" is not "claude" or "off"; using "off".')
+            publish = "off"
+        cfg.dashboard_publish = publish
+        cfg.dashboard_publish_model = str(dash.get("publish_model", "haiku")).strip()
+        cfg.dashboard_publish_tool = str(dash.get("publish_tool", "Artifact")).strip() or "Artifact"
+        for name, spec in dash.items():
+            if not isinstance(spec, dict):
+                continue
+            if not spec.get("data") or not spec.get("template"):
+                notes.append(f"note: dashboards.{name} needs both data and template; left out.")
+                continue
+            cfg.dashboards[name] = {k: str(spec[k]) for k in ("data", "template", "output", "artifact") if k in spec}
     from .names import DEFAULT_COMPANION, DEFAULT_OWNER, clean_name
     names = data.get("names", {})
     cfg.owner = clean_name(os.environ.get("VAULT_OWNER") or names.get("owner"), DEFAULT_OWNER)

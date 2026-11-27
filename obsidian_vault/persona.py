@@ -66,11 +66,13 @@ class Persona:
         return bool(self.loaded) and not self.missing
 
 
-def load_core(cfg: Config) -> tuple[str, list[str], list[str]]:
-    """Tally's shared core (bootstrap.md, soul.md) as one text, with what loaded and what is missing."""
+def load_core(cfg: Config, files: list[str] | None = None) -> tuple[str, list[str], list[str]]:
+    """Tally's shared core (bootstrap.md, soul.md) as one text, with what loaded and what is missing.
+    `files` picks other core files than tally.core_files (errands can carry fewer)."""
+    files = list(files) if files else list(cfg.core_files)
     loaded, missing, parts = [], [], []
     if cfg.core_dir and cfg.core_dir.is_dir():
-        for name in cfg.core_files:
+        for name in files:
             path = cfg.core_dir / name
             if path.is_file():
                 parts.append(f'<core_file name="{name}">\n{path.read_text(encoding="utf-8")}\n</core_file>')
@@ -78,7 +80,7 @@ def load_core(cfg: Config) -> tuple[str, list[str], list[str]]:
             else:
                 missing.append(name)
     else:
-        missing = list(cfg.core_files)
+        missing = files
     return ("\n\n".join(parts) if parts else cfg.fill(FALLBACK_CORE)), loaded, missing
 
 
