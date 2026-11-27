@@ -110,6 +110,15 @@ timeout_minutes = 45
 max_running = 2
 # Leave empty for your Claude Code default model.
 model = ""
+# A model per kind, when one kind needs less (or more) than the rest; empty = model above. Most of what
+# an errand costs is its context read again on every turn, so a long browser errand on a smaller model
+# costs a fraction: "sonnet" reads context at about 60% of Opus prices, "haiku" at about 20%.
+# session_model = "sonnet"
+# research_model = ""
+# code_model = ""
+# The core files an errand's system prompt carries; empty = the same as [tally] core_files. They ride
+# along on every turn of the run, so a long soul.md is paid for dozens of times in one errand.
+# core_files = ["bootstrap.md"]
 # Where code errands put their worktrees (default: next to this repo).
 # worktrees = "~/TheObsidianVault-errands"
 # Tools a session errand may use without asking. Names of your connectors' tools in Claude Code
@@ -127,6 +136,22 @@ session_tools = ["Read", "Glob", "Grep", "Edit", "Write", "Bash", "Skill", "WebS
 browser = "safari"  # also in the game: Esc → Settings
 # The process to check for; empty = "Safari" or "Google Chrome", to match the browser.
 browser_app = ""
+
+[dashboards]
+# Pages the game builds itself from a JSON file in the vault, with no model: the template's
+# __DASHBOARD_DATA__ is replaced by the file's contents. After an errand changes a dashboard's data
+# file, the game builds the page into the vault (the notice board shows it) and, with publish =
+# "claude", starts one small run whose only tool is Artifact to republish it to the claude.ai link.
+# That run gets a file path and a link, never the data. By hand:
+#   python3 -m obsidian_vault.dashboards build <name>     (or publish <name>, or list)
+publish = "claude"       # or "off": build the page only
+publish_model = "haiku"
+# One table per dashboard. Paths are relative to the vault folder (tally.core_dir).
+# [dashboards.depot]
+# data = "games/depot-history.json"
+# template = "games/depot-dashboard.template.html"
+# output = "Claude outputs/depot.html"     # default: Claude outputs/<name>.html
+# artifact = "https://claude.ai/artifact/<id>"
 
 [usage]
 # The usage meter and the errand queue. The game reads Claude Code's local logs (token counts, model

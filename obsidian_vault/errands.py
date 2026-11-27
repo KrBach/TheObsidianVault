@@ -30,9 +30,9 @@ import threading
 import time
 from pathlib import Path
 
-from .config import BROWSER_APPS, Config
+from .config import BROWSER_APPS, Config, short_path
 from .persona import load_core
-from . import usage
+from . import dashboards, usage
 
 KINDS = ("research", "code", "session")
 # What an errand of each kind is expected to cost before any has been measured, in dollars at API
@@ -44,6 +44,18 @@ INTERRUPTED = ("Interrupted: the game was restarted while this errand ran, so it
                "Nothing came back from it; queue it again to rerun it.")
 REQUEUED = ("Interrupted: the game was restarted while this errand ran. It was scheduled, so it is back in "
             "the queue and will start again when there is room.")
+# Every turn of a run re-reads the whole context, so what a run reads early is paid for on every turn
+# after it. These keep a session errand small.
+LEAN_RULES = ("Keep the run lean: every file and page you read stays in context and is paid for again on each "
+              "later turn. Do not Read a big data file (such as a JSON history) whole: load and change it with a "
+              "short python3 script through Bash and print only the part you need (the latest entry, one key). "
+              "Read a long note by its headings first and then only the section you need. Prefer reading page "
+              "text or one element over whole-page dumps or screenshots.")
+DASHBOARD_RULES = ("The game itself builds and publishes these dashboards from their data files once you are done, "
+                   "with no model, so keep only the data file up to date. Do not write, regenerate or publish the "
+                   "page yourself, and do not say in the report that it could not be published: the game adds a "
+                   "line about it.\n{list}")
+
 RESUMED = ("This errand was cut off by a restart once and has been started again. For a code errand the branch "
            "may already hold commits from the first try: look at them first and keep what is sound.")
 
@@ -81,9 +93,12 @@ _STOP = ("stop at once: begin the report with \"" + BROWSER_MISSING + "\" and sa
 BROWSER_RULES = {
     "safari": ("The browser in this run is Safari through MCPSafari (the mcp__mcp-safari__* tools), in OWNER's own "
                "Safari. " + _BUILT_IN.format(name="the mcp-safari tools", app="Safari")
-               + "If a status call reports the bridge as disconnected (or a port other than the one asked for), "
-               "wait a few seconds and try once more; it often connects on the second call. If the "
-               "mcp__mcp-safari__ tools are missing, or they still cannot reach Safari after that one retry, "
+               + "The bridge often reports disconnected on the very first call while the extension reconnects: "
+               "wait about 5 seconds and call again, up to 3 tries in all. A port other than the usual one (for "
+               "example 8090 instead of 8089) only means another program held the usual port when this run "
+               "started; it is not a failure, so carry on as soon as a status call says connected or Safari "
+               "answers, and do not mention it in the report unless Safari never answered. If the "
+               "mcp__mcp-safari__ tools are missing, or they still cannot reach Safari after 3 tries, "
                + _STOP.format(what="Safari closed, the extension not connected, a site not signed in") + "\n\n"
                "Safari asks OWNER before the extension touches a site it has not been granted (Website access: "
                "Ask), and nobody is there to answer, so a step on an ungranted site may wait or time out. Treat "
@@ -392,7 +407,7 @@ class Errands:
                              f"Open {app} with {how}, then approve the errand again.")
 
     def system_prompt(self, rec: dict) -> str:
-        core, _, _ = load_core(self.cfg)
+        core, _, _ = load_core(self.cfg, self.cfg.errand_core_files or None)
         if rec["spend_usd"] > 0:
             spend = (f"OWNER approved spending up to ${rec['spend_usd']:.2f} of OWNER's art credits on this errand. "
                      "Quote before each generation and stop before the total would pass that.")
@@ -401,7 +416,13 @@ class Errands:
                      "put it in the report and stop, so OWNER can approve the spend as a new errand.")
         rules = KIND_RULES[rec["kind"]].format(branch=rec.get("branch", ""), spend=spend)
         if rec["kind"] == "session":
-            rules += "\n\n" + BROWSER_RULES[self.browser()]
+            rules += "\n\n" + BROWSER_RULES[self.browser()] + "\n\n" + LEAN_RULES
+        if rec["kind"] != "code":
+            boards = dashboards.configured(self.cfg)
+            if boards:
+                listing = "\n".join(f"- {d.name}: data file {d.data_rel} in the vault folder"
+                                     + (f", published to {d.artifact}" if d.artifact else "") for d in boards)
+                rules += "\n\n" + DASHBOARD_RULES.format(list=listing)
         if rec.get("interrupted"):
             rules += "\n\n" + RESUMED
         return (self.cfg.fill("# Shared core\n\nThese files are Tally's identity, shared by every use case.\n\n")
@@ -444,9 +465,15 @@ class Errands:
                 cmd += ["--disallowedTools", ",".join(COST_TOOLS)]
             if cfg.work_dir and cfg.work_dir.is_dir():
                 cmd += ["--add-dir", str(cfg.work_dir)]
-        if cfg.errand_model:
-            cmd += ["--model", cfg.errand_model]
+        model = self.model_for(kind)
+        if model:
+            cmd += ["--model", model]
         return cmd
+
+    def model_for(self, kind: str) -> str:
+        """The model an errand of this kind runs on: [errands] <kind>_model, else [errands] model, else
+        Claude Code's own default ("")."""
+        return self.cfg.errand_kind_models.get(kind) or self.cfg.errand_model
 
     # ---------- running ----------
 
@@ -485,6 +512,10 @@ class Errands:
             rec["browser_missing"] = True
         if failed and not result:
             result = (err or "").strip()[-1500:] or f"claude exited with code {code}"
+        if rec["kind"] != "code" and not failed:
+            section = self._dashboards(rec)
+            if section:
+                result = result.rstrip() + "\n\n" + section
         if rec["kind"] == "code" and rec.get("worktree"):
             log = subprocess.run(["git", "-C", rec["worktree"], "log", "--oneline", f"{rec['base']}..HEAD"],
                                  capture_output=True, text=True).stdout.strip()
@@ -497,6 +528,26 @@ class Errands:
                 self.on_finish()
             except Exception:  # noqa: BLE001 - the scheduler's own timer tries again
                 pass
+
+    def _dashboards(self, rec: dict) -> str:
+        """Build (and publish) the dashboards whose data the run changed and add the publish runs' cost to
+        the errand's. Returns the report section about them ("" when no data changed)."""
+        try:
+            section, runs = dashboards.after_errand(self.cfg, float(rec.get("started") or 0), short=short_path)
+        except Exception as e:  # noqa: BLE001 - a dashboard problem never loses the report
+            section, runs = f"**Dashboards:** the game could not build them ({type(e).__name__}: {e}).", []
+        if section:
+            rec["dashboards"] = section
+        for data in runs:
+            found = usage.tokens_from_result(data) if isinstance(data, dict) else None
+            if not found:
+                continue
+            tokens = found[0]
+            mine = rec.setdefault("tokens", {k: 0 for k in ("input", "output", "cache_read", "cache_write")})
+            for k in ("input", "output", "cache_read", "cache_write"):
+                mine[k] = int(mine.get(k, 0)) + int(tokens.get(k, 0))
+            rec["est_usd"] = round(float(rec.get("est_usd") or 0) + float(tokens.get("usd", 0)), 2)
+        return section
 
     # ---------- for Tally ----------
 
