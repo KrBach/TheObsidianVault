@@ -94,6 +94,12 @@
     "fond": "Vellum lets you lift it for exactly three seconds, then pours out of your arms like ink."
   },
 
+  "lap": {
+    "_about": "While Vellum is asleep on OWNER's lap (cat.py, laps): look and take, from the one whose lap it is.",
+    "look": "Vellum is a warm, purring weight on your knees.",
+    "take": "You are already holding Vellum. Technically Vellum is holding you."
+  },
+
   "smell": "Warm dust, parchment and faintly, inexplicably, sardines.",
 
   "listen": {
