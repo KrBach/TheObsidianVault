@@ -101,9 +101,12 @@ export function createDenizens(world, api) {
                 nextStep: 0, restUntil: now() + 15 * S, mood: "sleepy", sleeping: false, batting: false,
                 perch: null, lift: 0, onDesk: false, goal: null, follow: null, come: null, hunger: null,
                 purrUntil: 0, pounceUntil: 0, fedAt: clock(),
-                // how much it likes each of them (0 to 1) and its odds of staying when they come over:
-                // both from the server (cat.py), which keeps them. They shift its odds, never decide them.
-                affinity: { player: 0, tally: 0 }, stayOdds: { player: 0, tally: 0 }, fondness: {}, fondnessText: "" };
+                // how much it likes each of them (0 to 1), its odds of staying when they come over and of
+                // picking their lap: all from the server (cat.py), which keeps them. They shift its odds,
+                // never decide them.
+                affinity: { player: 0, tally: 0 }, stayOdds: { player: 0, tally: 0 }, lapOdds: { player: 0, tally: 0 },
+                fondness: {}, fondnessText: "", hopText: "",
+                lap: null }; // "player" or "tally" while it sleeps on their lap (it shares their cell then)
   const guest = world.role && world.role !== "owner"; // a guest is not the one it knows
   const imp = { kind: "imp", x: 0, y: 0, rx: 0, ry: 0, path: [], hidden: true, alpha: 0, job: null, nextStep: 0, carrying: false };
   const out = [];  // errands the imp is out on
@@ -131,9 +134,11 @@ export function createDenizens(world, api) {
   // Affinity from the server, for whoever it is about (owner is the player here).
   function setAffinity(src) {
     if (!src?.affinity) return;
-    const a = src.affinity, s = src.stay_odds || {};
+    const a = src.affinity, s = src.stay_odds || {}, l = src.lap_odds || {};
     cat.affinity = { player: guest ? 0 : +a.owner || 0, tally: +a.tally || 0 };
     cat.stayOdds = { player: guest ? 0 : +s.owner || 0, tally: +s.tally || 0 };
+    cat.lapOdds = { player: guest ? 0 : +l.owner || 0, tally: +l.tally || 0 };
+    if (src.hop_down_text) cat.hopText = src.hop_down_text;
     cat.fondness = src.fondness || {};
     cat.fondnessText = src.fondness_text || "";
   }
@@ -195,7 +200,48 @@ export function createDenizens(world, api) {
     return true;
   }
 
+  // ---------- laps ----------
+  // A sleepy cat may pick the lap of someone sitting (chair, couch, bench, cushion or floor): odds by how
+  // fond it is of them (cat.py lap_odds: mostly when fond, rarely when friendly, never when wary). On a
+  // lap it shares the sitter's cell, the one exception to keeping a cell to itself, and is drawn on them.
+  // If they stand, move or walk, it hops down beside them, offended; nothing is said to the server, so
+  // its liking does not change.
+  const LAP_LIFT = 4; // a little above the seat (or the floor), onto the knees
+  const seated = (p) => !!p && p.pose?.how === "sit" && !p.moving;
+  const lapLift = (p) => (p?.pose?.floor ? 0 : p?.pose?.h || 0) + LAP_LIFT;
+  const freeCell = (x, y) => {
+    const ppl = people();
+    return !["player", "tally"].some((w) => ppl[w] && ppl[w].x === x && ppl[w].y === y);
+  };
+  function lapTarget() {
+    const ppl = people();
+    for (const who of ["player", "tally"].sort(() => Math.random() - 0.5)) {
+      const p = ppl[who];
+      if (seated(p) && Math.random() < (cat.lapOdds[who] || 0)) return { at: [p.x, p.y], lap: who, sleep: true };
+    }
+    return null;
+  }
+  function stillOnLap() { // the same rule as stays_on_lap() in cat.py
+    const p = people()[cat.lap];
+    return !!p && p.x === cat.x && p.y === cat.y && p.pose?.how === "sit";
+  }
+  // Off the lap, onto a free cell beside the sitter. Spoken only when it is offended (they got up).
+  function leaveLap(offended) {
+    if (!cat.lap) return;
+    const who = cat.lap;
+    cat.lap = null; cat.sleeping = false; cat.lift = 0;
+    const cells = around(cat.x, cat.y, (x, y) => canSettle(x, y) && freeCell(x, y));
+    const off = cells[0] || around(cat.x, cat.y, (x, y) => open(x, y) && freeCell(x, y))[0];
+    if (off) [cat.x, cat.y] = off;
+    if (offended) {
+      const ppl = people(), me = ppl.player;
+      if (who === "player" || (me && roomAt(me.x, me.y) === roomAt(cat.x, cat.y))) log(cat.hopText || `${NAME} hops down, offended.`, "action");
+      cat.restUntil = now() + span(15, 40);
+    }
+  }
+
   function leavePerch() {
+    if (cat.lap) return leaveLap(false);
     if (cat.perch) {
       const off = around(cat.x, cat.y, open)[0];
       if (off) [cat.x, cat.y] = off;
@@ -217,6 +263,8 @@ export function createDenizens(world, api) {
       cat.hunger = "bowl";
       if (bowl) { go({ at: bowl, perch: true, nearOnly: true, hungry: true }, t); return; }
     }
+    const lap = cat.mood === "sleepy" ? lapTarget() : null;
+    if (lap && go(lap, t)) return;
     let opts = places(cat.mood);
     if (!opts.length) opts = places("sleepy");
     const target = weighted(opts);
@@ -227,7 +275,19 @@ export function createDenizens(world, api) {
   function arrive(t) {
     const g = cat.goal || {};
     cat.goal = null;
-    if (g.perch && !g.nearOnly) { // hop up onto the desk or the map table
+    if (g.lap) {
+      const p = people()[g.lap];
+      if (seated(p) && p.x === cat.x && p.y === cat.y && cat.mood === "sleepy") { // still sitting: onto the lap
+        cat.lap = g.lap; cat.sleeping = true; cat.batting = false; cat.lift = lapLift(p);
+        cat.restUntil = t + span(150, 360);
+        return;
+      }
+      // they got up on the way: never share a cell with someone who is not a lap
+      if (!freeCell(cat.x, cat.y)) {
+        const off = around(cat.x, cat.y, (x, y) => open(x, y) && freeCell(x, y))[0];
+        if (off) [cat.x, cat.y] = off;
+      }
+    } else if (g.perch && !g.nearOnly) { // hop up onto the desk or the map table
       [cat.x, cat.y] = g.at;
       cat.perch = id(cat.x, cat.y);
       cat.onDesk = !!g.desk;
@@ -249,6 +309,7 @@ export function createDenizens(world, api) {
   function catStep(t, busy) {
     watchArrivals();
     const ppl = people();
+    if (cat.lap && !stillOnLap()) { leaveLap(true); return; } // they stood up, moved or walked off
     if (hungry() && cat.mood !== "hungry" && !cat.follow) {
       cat.mood = "hungry"; cat.hunger = null;
       if (!cat.sleeping && !cat.path.length) cat.restUntil = Math.min(cat.restUntil, t + 5 * S);
@@ -324,6 +385,7 @@ export function createDenizens(world, api) {
 
   // Where it is, in words, for Tally's game_state and the look text.
   function whereWord() {
+    if (cat.lap) return cat.lap === "tally" ? "on Tally's lap" : "on OWNER's lap";
     if (cat.perch === "desk") return "on the desk, sitting squarely on the open ledger";
     if (cat.perch === "map_table") return "on the map table";
     const here = id(cat.x, cat.y);
@@ -351,13 +413,25 @@ export function createDenizens(world, api) {
   }
 
   function snapshot() {
-    return { x: cat.x, y: cat.y, mood: cat.mood, asleep: cat.sleeping, on: whereWord() };
+    return { x: cat.x, y: cat.y, mood: cat.mood, asleep: cat.sleeping, on: whereWord(),
+             lap: cat.lap === "player" ? "owner" : cat.lap || "" };
+  }
+
+  // On a lap, for Tally's game_state: the same words as lap_text() in cat.py.
+  function lapText() {
+    if (!cat.lap) return "";
+    return cat.lap === "tally" ? `${NAME} is asleep on your lap.` : `${NAME} is asleep on OWNER's lap.`;
   }
 
   function restore(saved) {
     if (saved?.fed_at) cat.fedAt = saved.fed_at * 1000;
     setAffinity(saved);
     if (!saved || saved.x == null || !canSettle(saved.x, saved.y)) return false;
+    if (saved.lap) { // the lap went when the session did: it wakes beside where it was
+      const off = around(saved.x, saved.y)[0];
+      if (!off) return false;
+      saved = { ...saved, x: off[0], y: off[1], asleep: false };
+    }
     cat.x = cat.rx = saved.x; cat.y = cat.ry = saved.y;
     cat.mood = saved.mood || "sleepy";
     cat.sleeping = !!saved.asleep && cat.mood === "sleepy";
@@ -649,6 +723,7 @@ export function createDenizens(world, api) {
     restore,
     whereWord,
     doingWord,
+    lapText,
     hungry,
     next: (x, y) => dist([cat.x, cat.y], [x, y]) <= 1,
     around: () => around(cat.x, cat.y, open),

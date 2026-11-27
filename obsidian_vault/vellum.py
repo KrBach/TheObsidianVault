@@ -21,6 +21,7 @@ import random
 from pathlib import Path
 
 from .cat import FOND_OF, Cat, CatError, steps
+from .cat import tier as cat_tier
 from .config import REPO_ROOT
 
 WORDS_FILE = REPO_ROOT / "world" / "vellum-parser.json"
@@ -37,12 +38,8 @@ def tile_at(world: dict, x, y) -> str:
 
 
 def tier(affinity: float, words: dict) -> str:
-    t = words.get("tiers", {})
-    if affinity >= float(t.get("fond_from", 0.75)):
-        return "fond"
-    if affinity >= float(t.get("friendly_from", 0.3)):
-        return "friendly"
-    return "wary"
+    """wary, friendly or fond: cat.tier, with the steps from these words (the laps use the same ones)."""
+    return cat_tier(affinity, {k: v for k, v in words.get("tiers", {}).items() if not k.startswith("_")})
 
 
 class VellumParser:
@@ -96,7 +93,7 @@ class VellumParser:
         guest = who != "owner"
         state = self.cat.get()
         if isinstance(cat, dict):
-            state = {**state, **{k: cat[k] for k in ("x", "y", "mood", "asleep", "on") if k in cat}}
+            state = {**state, **{k: cat[k] for k in ("x", "y", "mood", "asleep", "on", "lap") if k in cat}}
         dist = steps(at, state)
         p = self.parse(line, w)
         out = {"ok": True, "verb": p["verb"], "effect": "none", "model": False}
@@ -138,6 +135,7 @@ class VellumParser:
         objs = p["objects"]
         reach = int(w.get("pet_reach", 1))
         out["tier"] = level
+        on_my_lap = state.get("lap") == "owner" and not guest and asleep and dist == 0
 
         def tend(action):
             try:
@@ -163,6 +161,8 @@ class VellumParser:
                 return say(w["look"]["tail"])
             if "paw" in objs:
                 return say(w["look"]["paw"])
+            if on_my_lap and w.get("lap", {}).get("look"):
+                return say(w["lap"]["look"])
             if asleep and tile == "compass_rose":
                 return say(w["hidden"]["compass"])
             return say(w["look"][mood])
@@ -195,6 +195,8 @@ class VellumParser:
             return say(place.get("out_of_reach", w["out_of_range"]), ok=False)
 
         if verb == "take":
+            if on_my_lap and w.get("lap", {}).get("take"):
+                return say(w["lap"]["take"])
             return say(w["take"]["fond" if fond else "not_fond"])
 
         if verb == "pet":

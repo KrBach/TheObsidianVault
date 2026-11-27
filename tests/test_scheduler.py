@@ -182,6 +182,7 @@ class SchedulerTest(_Queue):
         self.errands.move(a, "down")
         self.assertEqual([r["id"] for r in self.errands.scheduled()], [c, b, a])
         self.assertEqual(self.sched.check()["started"], c)
+        self.wait(c)  # let it finish before tearDown removes its folder
 
     def test_only_the_head_of_the_queue_is_tried(self):
         big = self.queue("Big code job", kind="code")  # projected at the code guess, $2.60

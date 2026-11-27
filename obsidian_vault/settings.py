@@ -1,8 +1,10 @@
-"""The menu's Settings window (owner only): the vault folders, the errands browser and the usage limits.
+"""The menu's Settings window (owner only): the vault folders, the errands browser, the idle time
+and the usage limits.
 
 What is set here goes into the local config file at once (config.write_local), outside the repo:
 [tally] core_dir (the Private vault), [tally] work_dir (the Work vault, optional),
-[errands] browser, and [usage] block_budget and daily_cap. A folder is only accepted if it exists. Paths are shown to the owner only,
+[tally] idle_minutes (when an idle conversation closes), [errands] browser, and [usage] block_budget
+and daily_cap. A folder is only accepted if it exists. Paths are shown to the owner only,
 and messages never repeat a path: the owner just typed it, and a message may end up in a log.
 """
 
@@ -32,6 +34,7 @@ def view(cfg) -> dict:
         "browsers": list(BROWSERS),
         "block_budget": cfg.usage_block_budget,
         "daily_cap": cfg.usage_daily_cap,
+        "idle_minutes": cfg.idle_minutes,
         "config_file": short_path(cfg.config_path) if cfg.config_path else "",
     }
 
@@ -95,6 +98,17 @@ def save(cfg, data: dict) -> dict:
         if v != getattr(cfg, attr):
             usage[key] = v
             changed.append(key)
+    if "idle_minutes" in data:
+        try:
+            m = float(data["idle_minutes"])
+        except (TypeError, ValueError):
+            raise SettingsError("the idle time must be a number of minutes (0: never)") from None
+        if not 0 <= m <= 24 * 60:
+            raise SettingsError("the idle time must be between 0 and 1440 minutes")
+        m = int(m) if m == int(m) else m
+        if m != cfg.idle_minutes:
+            tally["idle_minutes"] = m
+            changed.append("idle_minutes")
     try:
         if tally:
             write_local(cfg, "tally", tally)
@@ -115,4 +129,6 @@ def save(cfg, data: dict) -> dict:
         cfg.usage_block_budget = usage["block_budget"]
     if "daily_cap" in usage:
         cfg.usage_daily_cap = usage["daily_cap"]
+    if "idle_minutes" in tally:
+        cfg.idle_minutes = float(tally["idle_minutes"])
     return {"changed": changed, "notes": notes}

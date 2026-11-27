@@ -177,6 +177,10 @@ class Config:
     tick_minutes: float = 6.0
     tick_model: str = "haiku"
     thoughts_per_day: int = 3  # think-harder handoffs a tick may start on its own (0: off)
+    # Conversation rotation (rotation.py): close the conversation after this long without input (0: never),
+    # and before the next message once its context is past this many tokens (0: no limit).
+    idle_minutes: float = 30.0
+    context_limit_tokens: int = 100_000
     work_dir: Path | None = None  # the Work vault: read-only from the game
     web: bool = True  # WebSearch and WebFetch (read-only lookups)
     # Errands: bigger jobs Tally queues in the ledger; approving one starts a separate Claude Code run.
@@ -298,6 +302,8 @@ def load_config(path: Path | None = None) -> Config:
         tick_minutes=float(os.environ.get("VAULT_TICK_MINUTES") or tally.get("tick_minutes", 6)),
         tick_model=str(tally.get("tick_model", "haiku")),
         thoughts_per_day=int(tally.get("thoughts_per_day", 3)),
+        idle_minutes=max(0.0, float(tally.get("idle_minutes", 30))),
+        context_limit_tokens=max(0, int(tally.get("context_limit_tokens", 100_000))),
         web=bool(brain.get("web", True)),
     )
     errands = data.get("errands", {})

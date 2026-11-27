@@ -16,6 +16,7 @@ from .board import Board, BoardError
 from .errands import Errands
 from .ledger import Ledger, LedgerError
 from .cat import Cat, CatError
+from .rotation import Handoff, HandoffError
 from .world import World, WorldError
 
 PROTOCOL = "2025-06-18"
@@ -261,6 +262,16 @@ GAME_TOOLS = [
         "description": "Remove a place you named earlier (built-in places stay).",
         "inputSchema": _schema({"id": S}, ["id"]),
     },
+    {
+        "name": "write_handoff",
+        "description": (
+            "Write your handoff for the next conversation: open threads, pending errands, promised wishlist items, "
+            "things to watch. Plain text, at most about 2 KB. It replaces the last handoff (kept in the game's state "
+            "folder, not the vault) and the next conversation gets it once, in its first turn. Use it when the game "
+            "says a conversation is closing, or when OWNER asks."
+        ),
+        "inputSchema": _schema({"text": {**S, "description": "The whole handoff, plain text."}}, ["text"]),
+    },
 ]
 GAME_NAMES = {t["name"] for t in GAME_TOOLS}
 
@@ -287,6 +298,11 @@ def call_game(world: World, name: str, args: dict) -> str:
         return world.name_place(args.get("id", ""), args.get("name", ""), args.get("x"), args.get("y"))
     if name == "forget_place":
         return world.forget_place(args.get("id", ""))
+    if name == "write_handoff":
+        try:
+            return Handoff(world.state).write(args.get("text", ""))
+        except HandoffError as e:
+            raise WorldError(str(e))
     if name == "tend_cat":
         saved = world.tally() or {}
         try:

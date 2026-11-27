@@ -1022,7 +1022,8 @@ export class IsoRenderer {
         items.push({ depth: x + y, x, kind: "tile", y, ch: map[y][x], id });
       }
     }
-    for (const e of entities) items.push({ depth: e.rx + e.ry + 0.5, x: e.rx, kind: "creature", e });
+    // a cat on a lap shares the sitter's cell: draw it just after them, so it sits on them
+    for (const e of entities) items.push({ depth: e.rx + e.ry + 0.5 + (e.lap ? 0.01 : 0), x: e.rx, kind: "creature", e });
     items.sort((a, b) => a.depth - b.depth || a.x - b.x);
 
     const pd = player.rx + player.ry, pc = player.rx - player.ry;
