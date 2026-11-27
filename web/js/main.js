@@ -737,7 +737,15 @@ function nearestFloor(x, y) {
 
 const IDLE_STOP_MS = 30 * 60 * 1000;
 let lastInput = performance.now();
-const touched = () => { lastInput = performance.now(); };
+// The server keeps its own idle timer for the conversation (rotation.py: after [tally] idle_minutes
+// without input it closes it, with a handoff). Any input tells it so, at most once a minute.
+let lastPing = -Infinity;
+const touched = () => {
+  lastInput = performance.now();
+  if (lastInput - lastPing < 60000 || !state.world || state.closed || isGuest()) return;
+  lastPing = lastInput;
+  fetch("/api/activity", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+};
 
 async function tallyChooses() {
   const t = state.tally, now = performance.now();
@@ -894,8 +902,70 @@ function move(dx, dy) {
     else if (now - seen[after.name] > 30000) log(`You enter ${after.name}.`);
     seen[after.name] = now;
   }
-  if (nx === state.world.exit[0] && ny === state.world.exit[1]) log("The way out. Close the tab to leave; Tally keeps the ledger.");
   if (t.id === "papers" || t.id === "mat") log(describe(nx, ny));
+  const [ex, ey] = state.world.exit || [];
+  if (nx === ex && ny === ey) atTheDoor(nx - dx, ny - dy); // the front door is in the outer wall: any step onto it is from inside
+}
+
+// Stepping onto the front door from inside: leave (quit, as the menu's button does) or step back onto the mat.
+async function atTheDoor(fromX, fromY) {
+  state.path = [];
+  state.onArrive = null;
+  const leave = await ask(isGuest() ? "Leave the vault?" : "Leave the vault? Tally writes a handoff for next time, and the game closes.");
+  if (leave) return leaveVault("door");
+  const [mx, my] = state.world.spawn; // the welcome mat, just inside
+  const back = tileAt(mx, my)?.def && !tileAt(mx, my).def.solid ? [mx, my] : [fromX, fromY];
+  [state.player.x, state.player.y] = back;
+  log("You step back onto the mat.", "action");
+}
+
+// ---------- a yes/no question, and leaving ----------
+
+const askEl = $("ask");
+let askAnswer = null;
+function ask(text) {
+  if (askAnswer) askAnswer(false);
+  hideCtx();
+  closeMenu();
+  if (state.talking) stopTalking(true);
+  $("ask-text").textContent = fill(text);
+  askEl.hidden = false;
+  $("ask-yes").focus({ preventScroll: true });
+  return new Promise((resolve) => {
+    askAnswer = (yes) => { askAnswer = null; askEl.hidden = true; resolve(yes); };
+  });
+}
+const askOpen = () => !askEl.hidden;
+$("ask-yes").addEventListener("click", () => askAnswer?.(true));
+$("ask-no").addEventListener("click", () => askAnswer?.(false));
+
+// Quit: Tally gets one last turn (an interaction-log line and a handoff), then the server stops.
+// A guest only steps out (logs out): quitting the game is OWNER's.
+async function leaveVault(cue) {
+  if (isGuest()) return logout();
+  if (state.closed) return;
+  state.closed = true;
+  saveTally(true);
+  input.disabled = true;
+  log(cue === "door" ? "You open the front door. Behind you, Tally finishes the page in the ledger…"
+    : "You put the vault away for now. Tally finishes the page in the ledger…", "action");
+  let res = {};
+  try {
+    const r = await fetch("/api/quit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cue }) });
+    res = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(res.error || `status ${r.status}`);
+  } catch (e) {
+    state.closed = false;
+    input.disabled = false;
+    return log(`The vault would not close: ${e.message}`, "err");
+  }
+  const said = res.said ? `${names.companion}: “${res.said}”\n\n` : "";
+  const note = !res.closed ? "There was no conversation to close."
+    : res.handoff ? `${names.companion} left a handoff for next time.`
+    : `${names.companion} could not finish a new handoff${res.error ? ` (${res.error})` : ""}; the last one is kept.`;
+  $("closed-text").textContent = `${said}${note}\n\nThe game has stopped. You can close this tab; start it again with python3 -m obsidian_vault.`;
+  $("closed-text").style.whiteSpace = "pre-wrap";
+  $("closed").hidden = false;
 }
 
 function startTalking(to = "tally") {
@@ -1167,6 +1237,10 @@ $("m-new").addEventListener("click", () => { closeMenu(); newConversation(); });
 $("m-board").addEventListener("click", () => { closeMenu(); openBoard(); });
 $("m-ledger").addEventListener("click", () => { closeMenu(); openLedger(); });
 $("m-logout").addEventListener("click", () => logout());
+$("m-quit").addEventListener("click", async () => {
+  closeMenu();
+  if (await ask("Quit the game? Tally writes a handoff for next time, then the vault closes.")) leaveVault("quit");
+});
 $("m-character").addEventListener("click", () => { closeMenu(); character.open(); });
 character.initCharacter();
 $("m-settings").addEventListener("click", () => { closeMenu(); if (!isGuest()) settings.open(); });
@@ -1185,7 +1259,11 @@ function openLedger() {
 }
 
 function newConversation() {
-  resetConversation().then(() => log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action"));
+  if (!isGuest()) log("Tally finishes the page in the ledger before turning it…", "action");
+  resetConversation().then((res) => {
+    if (res?.said) logLine("Tally", "tally").textContent = res.said;
+    log("You turn to a fresh page in the ledger. Tally starts a new conversation.", "action");
+  });
 }
 
 // ---------- input ----------
@@ -1203,6 +1281,11 @@ window.addEventListener("keydown", (e) => {
   const t = e.target;
   if (t !== input && t?.matches?.("input, textarea, select, [contenteditable]")) return; // typing in a field is not a hotkey
   touched();
+  if (state.closed) return;
+  if (askOpen()) {
+    if (e.key === "Escape") { e.preventDefault(); askAnswer?.(false); }
+    return; // Enter and Tab work the question's buttons
+  }
   if (!ctxEl.hidden) {
     if (e.key === "Escape") { e.preventDefault(); hideCtx(); }
     return; // arrows and Enter work the menu's buttons

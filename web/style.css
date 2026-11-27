@@ -178,6 +178,11 @@ main { display: flex; gap: 8px; min-height: 0; flex: 1 1 auto; }
 
 /* The Character window: names, portrait, time zone, password. */
 #character { width: min(640px, calc(100% - 24px)); left: 50%; right: auto; transform: translateX(-50%); }
+/* a yes/no question from the game (Quit, the front door) */
+#ask { width: min(360px, calc(100% - 24px)); top: 30%; left: 50%; right: auto; transform: translateX(-50%); z-index: 9; }
+.ask-text { padding: 4px 2px 8px; }
+#closed[hidden] { display: none; }
+#closed { position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, #140d22 0%, var(--bg) 70%); }
 .char-body { display: flex; gap: 16px; overflow-y: auto; min-height: 0; }
 .char-portrait { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .char-portrait img, .char-portrait .guest-art { width: 120px; height: 150px; object-fit: cover; border: 1px solid var(--line); }

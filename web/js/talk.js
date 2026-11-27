@@ -27,6 +27,8 @@ export async function talk(text, where, handlers, extra = {}) {
   }
 }
 
+// A new conversation: for OWNER, Tally first gets a last turn in the old one (a log line and a handoff).
 export async function resetConversation() {
-  await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const r = await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+  return r.json().catch(() => ({}));
 }

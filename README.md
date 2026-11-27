@@ -39,10 +39,10 @@ Everything that belongs to you or this computer (the vault folders, your name, t
 
 `VAULT_CONFIG=/some/file.toml` points the game at another file. The game creates the file on first run from [config.example.toml](config.example.toml), which holds placeholders only. The terminal shows where the file is, in a short form.
 
-- **In the game:** Esc → **Settings** sets the Private vault folder, the Work vault folder (optional) and the browser for session errands (`safari`, `chrome` or `off`). A folder is accepted only if it exists on this computer. Esc → **Character** sets your name, your companion's name (default Tally), the time zone, a portrait upload and your password. Changes are written to the local file at once, keeping its comments. Changing the vault folder starts a fresh conversation with Tally. Guests never see either window, and the server refuses them both.
+- **In the game:** Esc → **Settings** sets the Private vault folder, the Work vault folder (optional), the browser for session errands (`safari`, `chrome` or `off`) and the idle minutes after which the conversation closes. A folder is accepted only if it exists on this computer. Esc → **Character** sets your name, your companion's name (default Tally), the time zone, a portrait upload and your password. Changes are written to the local file at once, keeping its comments. Changing the vault folder starts a fresh conversation with Tally. Guests never see either window, and the server refuses them both.
 - **By hand:** edit the local file: `[names]` `owner`, `companion` and `owner_portrait`; `[tally]` `core_dir`, `work_dir` and `timezone` (an IANA name such as `"Europe/Berlin"`; empty means this computer's); `[errands]` `browser`. Restart the game afterwards.
 - **Moving from an older version (done once, by itself):** an old `config.toml` in the game folder is moved to the local file and left behind as `config.toml.migrated`. Names and the time zone set earlier in the game (`.vault-state/settings.json`) are folded in, and that file is renamed `settings.json.migrated`. Nothing is deleted.
-- **Kept in the state folder (`.vault-state/`, git-ignored):** the password hash, the uploaded portrait, the conversation id, the ledger, backups and Tally's moves. Set `[writes] state_dir` in the local file to a folder outside the game's folder if you also want those to survive a fresh download.
+- **Kept in the state folder (`.vault-state/`, git-ignored):** the password hash, the uploaded portrait, the conversation id, Tally's handoff, the ledger, backups and Tally's moves. Set `[writes] state_dir` in the local file to a folder outside the game's folder if you also want those to survive a fresh download.
 
 The code and context files never name anyone. They say OWNER where your name goes, and the game fills in the configured names. A test (`tests/test_pii.py`) fails if a file in the repo holds a home-folder path, an email address (other than placeholders like `@example.com`) or a phone number.
 
@@ -62,10 +62,22 @@ The game opens at the door: come in as the owner (the name in `[names] owner`) o
 
 Set `brain.kind` in your local settings file (see above):
 
-- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set the Work vault (Esc → Settings, or `tally.work_dir`) to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`); press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in your local settings file as `claude_path = "..."` under `[brain]`.
+- `claude-code` (the default): runs `claude -p` with your Claude Code login and resumes the same session each turn. No API key and no Python packages needed. Tally's built-in tools are read-only (`Read`, `Glob`, `Grep`, plus `WebSearch` and `WebFetch` for lookups unless `brain.web = false`) and Tally runs in the vault folder, so Tally can look at notes when you ask. Set the Work vault (Esc → Settings, or `tally.work_dir`) to let Tally read work notes too (read-only; work content never goes into the Private vault). The conversation survives a restart of the game (`.vault-state/session.json`) until one of the cues under "When a conversation closes" ends it; press `n` for a fresh one. Long answers render light Markdown; press `e` or the ⤢ button to enlarge the talk box. Writing goes only through the vault tools described under "Writing to the vault". If the game says it cannot find Claude Code, run `which claude` in a terminal and put the path it prints in your local settings file as `claude_path = "..."` under `[brain]`.
 - `api`: calls the Claude API (`claude-opus-5-5`) with `ANTHROPIC_API_KEY`. Run `python3 -m pip install -r requirements.txt` first.
 
 `brain.model` picks a model; leave it empty for the default. Environment overrides: `VAULT_CONFIG`, `TALLY_CORE_DIR`, `TALLY_WORK_DIR`, `TALLY_BRAIN`, `TALLY_MODEL`, `CLAUDE_PATH`, `VAULT_PORT`. An override wins over the settings file, including what you set in the menu.
+
+### When a conversation closes, and the handoff
+
+Every turn resumes the same Claude Code session, so a long conversation is reread in full each time. Tally's own rule (soul.md, "Conversation rotation") ends a conversation at a natural point with a handoff first, and the game follows it ([obsidian_vault/rotation.py](obsidian_vault/rotation.py)). The cues:
+
+- **Quit** (Esc → "Quit the game", with a confirm) or **leaving by the front door** (step onto the Entrance Hall door; "Leave the vault?" yes quits, no steps you back onto the mat). After Tally's last turn the server shuts down cleanly. A guest at the door only logs out.
+- **Idle:** no input from you for `[tally] idle_minutes` (default 30; also in Esc → Settings; 0 = never). Only the conversation closes: ticks, Vellum and Brass carry on. The browser tells the server about input at most once a minute; with the tab closed the server's timer still runs.
+- **A new day:** the first message after 04:00 local time (`[tally] timezone`) closes yesterday's conversation first.
+- **Size:** once the context is past `[tally] context_limit_tokens` (default 100000; 0 = no limit), the next message closes it first. The size comes from the model calls' token counts, and Tally sees it at the end of each `<game_state>` line.
+- **`n`** (a new conversation) closes the old one the same way.
+
+On every cue Tally gets one last short turn, in a `<closing>` block naming the cue, to append the interaction-log line and write a handoff with `write_handoff` (plain text, at most about 2 KB). The handoff is kept in the state folder (`.vault-state/handoff.md`, git-ignored, never the vault) and overwritten each time. Then the session ends. The next conversation starts fresh and gets the handoff once, in its first turn, inside a `<handoff>` block marked as Tally's own note. If the last turn fails or takes over 60 seconds, the conversation closes anyway and the previous handoff is kept (`.vault-state/conversation.json` records whether it is still to be handed over). Ctrl+C still stops the game at once, with no last turn; the next new-day, size or idle cue closes that conversation later.
 
 ## Writing to the vault
 
@@ -128,7 +140,9 @@ Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.js
 | Esc | step away from the desk; otherwise open the menu (settings, controls, status). `m` opens it too |
 | `v` | switch between the isometric and the ASCII view |
 | mouse wheel | zoom (isometric view) |
-| `n` | start a new conversation |
+| `n` | start a new conversation (Tally writes a handoff first) |
+| Esc menu, "Quit the game" | asks first; Tally writes a handoff, then the game stops |
+| the front door | in the Entrance Hall, past the mat: "Leave the vault?" yes quits, no steps you back |
 | `e` | enlarge the talk box for long answers |
 | `b` | open the notice board (replaces the `b` diagonal step) |
 | `p` | open the ledger |
@@ -138,7 +152,7 @@ Furniture says what you can do on it (`use` in [world/tiles.json](world/tiles.js
 | Esc menu, "reads replies aloud" | Tally reads each reply aloud with the system voice; kept per browser |
 | the bell | in the Entrance Hall, by the way in: click it (or walk into it) and Tally comes to you from wherever they are |
 
-The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it. Press `n` for a fresh one.
+The conversation lives in the server and its id is saved, so reloading the page or restarting the server keeps it until a closing cue (see "When a conversation closes"). Press `n` for a fresh one.
 
 ## Art
 

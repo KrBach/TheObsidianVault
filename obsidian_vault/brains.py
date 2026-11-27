@@ -49,6 +49,7 @@ TOOL_FLAVOUR = {
     "mcp__vault__name_place": "Tally pencils a new name onto the plan",
     "mcp__vault__forget_place": "Tally rubs out a name on the plan",
     "mcp__vault__tend_cat": "Tally turns to the cat",
+    "mcp__vault__write_handoff": "Tally writes a note for the next conversation",
 }
 
 VAULT_TOOLS = [
@@ -80,6 +81,7 @@ GAME_TOOLS = [
     "mcp__vault__name_place",
     "mcp__vault__forget_place",
     "mcp__vault__tend_cat",
+    "mcp__vault__write_handoff",
 ]
 
 
@@ -115,8 +117,18 @@ class Brain:
     def talk(self, text: str) -> Iterator[dict]:
         raise NotImplementedError
 
+    context_tokens = 0  # roughly how big the conversation is now (the last call's input plus output)
+    can_write_handoff = True  # has the write_handoff tool
+
     def reset(self) -> None:
         pass
+
+    def has_conversation(self) -> bool:
+        """Is there a conversation to close?"""
+        return False
+
+    def cancel(self) -> None:
+        """Stop a turn in progress (a final turn that ran too long)."""
 
     def muse(self, system: str, prompt: str, model: str) -> str:
         """One short, separate call with no tools and no memory (Tally's tick). Raises on failure."""
@@ -137,18 +149,23 @@ class ClaudeCodeBrain(Brain):
         self.mcp_config = write_mcp_config(cfg)  # the game tools are always there; writing tools by mode
         # The conversation survives a restart of the game: the session id is kept in the state folder.
         self.session_file = cfg.state_dir / "session.json"
+        self.proc = None
+        self.context_tokens = 0
         self.session_id: str | None = self._load_session()
 
     def _load_session(self) -> str | None:
         try:
-            return json.loads(self.session_file.read_text(encoding="utf-8")).get("session_id") or None
+            data = json.loads(self.session_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+        self.context_tokens = int(data.get("context_tokens") or 0)
+        return data.get("session_id") or None
 
     def _save_session(self) -> None:
         try:
             if self.session_id:
-                self.session_file.write_text(json.dumps({"session_id": self.session_id}), encoding="utf-8")
+                self.session_file.write_text(json.dumps({"session_id": self.session_id,
+                                                         "context_tokens": self.context_tokens}), encoding="utf-8")
             elif self.session_file.exists():
                 self.session_file.unlink()
         except OSError:
@@ -156,7 +173,27 @@ class ClaudeCodeBrain(Brain):
 
     def reset(self) -> None:
         self.session_id = None
+        self.context_tokens = 0
         self._save_session()
+
+    def has_conversation(self) -> bool:
+        return bool(self.session_id)
+
+    def cancel(self) -> None:
+        proc = self.proc
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+
+    @staticmethod
+    def usage_tokens(usage) -> int:
+        """The size of the context one model call saw: its input (cached or not) plus what it wrote."""
+        if not isinstance(usage, dict):
+            return 0
+        return sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
+                                                    "cache_read_input_tokens", "output_tokens"))
 
     def _cwd(self):
         return self.cfg.core_dir if self.cfg.core_dir and self.cfg.core_dir.is_dir() else None
@@ -196,7 +233,7 @@ class ClaudeCodeBrain(Brain):
             return
         cwd = self._cwd()
         with self.lock:
-            proc = subprocess.Popen(
+            proc = self.proc = subprocess.Popen(
                 self._command(), cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, encoding="utf-8",
             )
@@ -213,6 +250,10 @@ class ClaudeCodeBrain(Brain):
                     continue
                 if msg.get("session_id"):
                     self.session_id = msg["session_id"]
+                if msg.get("type") == "assistant" and not msg.get("parent_tool_use_id"):
+                    n = self.usage_tokens((msg.get("message") or {}).get("usage"))
+                    if n:  # the latest call in this turn is the best guess at the context's size
+                        self.context_tokens = n
                 if msg.get("type") != "stream_event":
                     if msg.get("type") == "result" and msg.get("is_error"):
                         yield {"type": "error", "text": str(msg.get("result") or "Claude Code reported an error.")}
@@ -233,6 +274,7 @@ class ClaudeCodeBrain(Brain):
                         yield {"type": "delta", "text": delta.get("text", "")}
 
             proc.wait()
+            self.proc = None
             if proc.returncode != 0 and not got_text:
                 err = (proc.stderr.read() if proc.stderr else "").strip()
                 if resumed and self.session_id == resumed:
@@ -240,6 +282,9 @@ class ClaudeCodeBrain(Brain):
                     self.session_id = None
                     err = (err[-300:] + "\n" if err else "") + "Could not pick up the last conversation; the next message starts a fresh one."
                 yield {"type": "error", "text": err[-500:] or f"claude exited with code {proc.returncode}"}
+            for pipe in (proc.stdout, proc.stderr):
+                if pipe:
+                    pipe.close()
             self._save_session()
         yield {"type": "done"}
 
@@ -278,6 +323,8 @@ class GuestClaudeBrain(ClaudeCodeBrain):
         self.exe = cfg.claude_path
         self.writes = False
         self.session_file = cfg.state_dir / "guest-session.json"
+        self.proc = None
+        self.context_tokens = 0
         self.session_id = self._load_session()
 
     def _cwd(self):
@@ -323,8 +370,14 @@ class ApiBrain(Brain):
         self.history: list = []
         self.lock = threading.Lock()
 
+    can_write_handoff = False  # no tools: its closing words become the handoff
+
     def reset(self) -> None:
         self.history = []
+        self.context_tokens = 0
+
+    def has_conversation(self) -> bool:
+        return bool(self.history)
 
     def talk(self, text: str) -> Iterator[dict]:
         with self.lock:
@@ -360,6 +413,10 @@ class ApiBrain(Brain):
                 yield {"type": "error", "text": "Tally declined to answer that one."}
             else:
                 self.history.append({"role": "assistant", "content": final.content})
+                u = getattr(final, "usage", None)
+                if u is not None:
+                    self.context_tokens = sum(int(getattr(u, k, 0) or 0) for k in (
+                        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
         yield {"type": "done"}
 
     MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
