@@ -49,6 +49,7 @@
               <button type="button" class="menu-btn" id="m-character">Character: names, portrait, time zone, password</button>
               <button type="button" class="menu-btn" id="m-settings">Settings: vault folders, errands browser</button>
               <button type="button" class="menu-btn" id="m-logout">Leave the vault (log out)</button>
+              <button type="button" class="menu-btn" id="m-quit">Quit the game (Tally writes a handoff first)</button>
               <div class="label">THE VAULT</div>
               <div id="menu-status" class="dim small"></div>
             </div>
@@ -98,11 +99,20 @@
               <label>Work vault folder (optional, read-only)<input id="set-work" placeholder="empty: no Work vault" autocomplete="off" spellcheck="false"></label>
               <div id="set-work-ok" class="small dim"></div>
               <label>Browser for session errands<select id="set-browser"></select></label>
+              <label>Close the conversation after this many idle minutes (0: never)<input id="set-idle" type="number" min="0" max="1440" step="1" autocomplete="off"></label>
               <button type="button" class="link-btn" id="set-character">your name, portrait and time zone: Character…</button>
               <div id="set-file" class="dim small"></div>
               <div class="review-foot"><span id="set-msg" class="warn"></span><button type="submit" class="primary">Save</button></div>
             </div>
           </form>
+        </div>
+        <div id="ask" class="pop" hidden>
+          <div class="review-head"><span id="ask-title">THE VAULT</span></div>
+          <div id="ask-text" class="ask-text"></div>
+          <div class="review-foot">
+            <button type="button" id="ask-no">No (Esc)</button>
+            <button type="button" id="ask-yes" class="primary">Yes</button>
+          </div>
         </div>
         <div id="review" hidden>
           <div class="review-head"><span id="review-title"></span><button type="button" id="review-close" title="Close (Esc)">×</button></div>
@@ -159,6 +169,7 @@
       <div id="login-error" class="warn"></div>
     </div>
   </div>
+  <div id="closed" hidden><div class="login-box"><div class="title">THE OBSIDIAN VAULT</div><div id="closed-text" class="dim"></div></div></div>
   <div id="fatal" hidden></div>
   <script>
     // If the game's scripts fail to load or crash, say so on the page instead of showing nothing.

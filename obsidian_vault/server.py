@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import webbrowser
 from http.cookies import SimpleCookie
 from http import HTTPStatus
@@ -18,6 +19,7 @@ from .config import REPO_ROOT, Config, load_config, short_path
 from .ledger import Ledger, LedgerError
 from .moves import MoveLog
 from .persona import Persona, guest_shelves, load_guest_persona, load_persona, vault_shelves
+from .rotation import Rotation
 from .brass import Brass, BrassTalk
 from .cat import ACTIONS as CAT_ACTIONS, Cat, CatError
 from .tick import Ticker
@@ -46,6 +48,14 @@ class Game:
         self.brass_talk = BrassTalk(cfg, self.brain)
         self.auth = Auth(cfg.state_dir)
         self.guest_brain: Brain = make_guest_brain(cfg, load_guest_persona(cfg))
+        self.rotation = Rotation(cfg, self.brain)  # when OWNER's conversation closes, and the handoff
+        self.server = None  # the HTTP server, so Quit can stop it (set in main)
+
+    def shutdown(self) -> None:
+        """Stop serving, from a thread of its own: shutdown() waits for serve_forever to return."""
+        self.rotation.stop()
+        if self.server is not None:
+            threading.Thread(target=self.server.shutdown, name="quit", daemon=True).start()
 
     def world(self, role: str = "owner") -> dict:
         world = self.layout.load()  # the repo's map plus Tally's own changes
@@ -181,7 +191,7 @@ def make_handler(game: Game):
 
         # Guests may walk around and talk to Tally; the owner's things stay theirs.
         OWNER_ONLY = ("/api/board", "/api/errands", "/api/pending", "/api/tally", "/api/character", "/api/settings",
-                      "/api/brass")
+                      "/api/brass", "/api/quit")
 
         def _gate(self) -> str | None:
             """The role for an /api/ call, or None after answering 401/403 for it."""
@@ -285,8 +295,25 @@ def make_handler(game: Game):
                 return self._json({"ok": True, **result, **settings.view(game.cfg)})
 
             if self.path == "/api/reset":
-                (game.guest_brain if guest else game.brain).reset()
+                if guest:
+                    game.guest_brain.reset()
+                    return self._json({"ok": True})
+                game.rotation.touch()
+                res = game.rotation.close("new")  # Tally's last turn: log line and handoff, then a fresh one
+                return self._json({"ok": True, **res})
+
+            if self.path == "/api/activity":  # OWNER did something in the game: the idle timer starts again
+                if not guest:
+                    game.rotation.touch()
                 return self._json({"ok": True})
+
+            if self.path == "/api/quit":  # owner only (OWNER_ONLY): the menu's Quit, or the front door
+                cue = str(payload.get("cue", "quit"))
+                cue = cue if cue in ("quit", "door") else "quit"
+                res = game.rotation.close(cue)
+                self._json({"ok": True, **res})
+                game.shutdown()
+                return
 
             if self.path == "/api/tally":
                 try:
@@ -370,6 +397,23 @@ def make_handler(game: Game):
             where = str(payload.get("where", "")).strip()[:1000]
             if guest:
                 return self._stream(game.guest_brain, f"<game_state>{where}</game_state>\n{text}" if where else text, guest=True)
+            return self._talk_owner(payload, text, said, where)
+
+        def _talk_owner(self, payload: dict, text: str, said: str, where: str):
+            """OWNER's message: close the conversation first on a day or size cue, then the turn itself,
+            with the handoff in front of the first message of a fresh conversation."""
+            rot = game.rotation
+            rot.touch()
+            self._start_stream()
+            with rot.lock:  # waits for an idle close in progress
+                cue = rot.due_before_message()
+                if cue:
+                    self._event({"type": "action", "text": game.cfg.fill(
+                        "Tally closes the ledger on this conversation and opens a fresh page "
+                        f"({'a new day' if cue == 'day' else 'the conversation has grown long'})")})
+                    res = rot.close(cue)
+                    if res.get("error"):
+                        print(f"  closing turn ({cue}) did not finish: {res['error'][:200]}")
             game.cat.note_talk(payload.get("cat"), payload.get("tally"))  # what Tally is told, for tend_cat
             finished = game.errands.unreported()
             if finished:
@@ -381,21 +425,44 @@ def make_handler(game: Game):
                         f"them (oldest first). The ones made between conversations come from your short check-ins, "
                         f"with a brief sketch of you rather than this whole conversation; they are still your "
                         f"choices and your reasons.\n{memory}\n</your_recent_moves>\n{text}")
-            if where:
-                text = f"<game_state>{where}</game_state>\n{text}"
-            return self._stream(game.brain, text, said=said)
+            where = f"{where} {rot.size_line()}".strip()  # the conversation's approximate size, for Tally
+            text = f"<game_state>{where}</game_state>\n{text}"
+            text, injected = rot.first_turn_text(text)  # Tally's own handoff, once, in a fresh conversation
+            rot.begin_turn()
+            try:
+                ok = self._stream(game.brain, text, said=said, started=True)
+            finally:
+                rot.end_turn()
+            rot.turn_done(ok, injected)
 
-        def _stream(self, brain: Brain, text: str, guest: bool = False, said: str = ""):
+        def _start_stream(self):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
+
+        def _event(self, event: dict):
+            try:
+                self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+        def _stream(self, brain: Brain, text: str, guest: bool = False, said: str = "", started: bool = False) -> bool:
+            """Stream one turn to the browser. Returns True if it finished without an error."""
+            if not started:
+                self._start_stream()
             layout_before = game.layout.version()
             if not guest:
                 game.layout.take_intent()  # an old intent from a reply that never finished does not count
             reply = []
+            ok, done = True, False
             try:
                 for event in brain.talk(text):
+                    if event.get("type") == "error":
+                        ok = False
+                    if event.get("type") == "done":
+                        done = True
                     if event.get("type") == "delta":
                         reply.append(event.get("text", ""))
                     if event.get("type") == "done" and not guest:
@@ -415,7 +482,8 @@ def make_handler(game: Game):
                     self.wfile.write(f"data: {json.dumps(event)}\n\n".encode())
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
-                pass
+                pass  # the page went away; the turn itself may still have finished
+            return ok and done
 
     return Handler
 
@@ -449,17 +517,26 @@ def main() -> None:
         print(f"  tick: Tally decides where to go every {cfg.tick_minutes:g} min ({cfg.tick_model or 'default model'})")
     else:
         print("  tick: off")
+    idle = f"after {cfg.idle_minutes:g} min without input" if cfg.idle_minutes > 0 else "never when idle"
+    limit = f", past {cfg.context_limit_tokens // 1000}K tokens" if cfg.context_limit_tokens else ""
+    print(f"  conversation: closes on Quit, at the front door, at 04:00, {idle}{limit} (with a handoff)")
     url = f"http://{cfg.host}:{cfg.port}/"
     server = ThreadingHTTPServer((cfg.host, cfg.port), make_handler(game))
-    print(f"  open {url}  (Ctrl+C to leave)")
+    game.server = server
+    game.rotation.watch()
+    print(f"  open {url}  (Quit in the menu, or Ctrl+C, to leave)")
     try:
         webbrowser.open(url)
     except Exception:
         pass
     try:
         server.serve_forever()
+        print("You leave the vault by the front door. Tally keeps the ledger.")
     except KeyboardInterrupt:
         print("\nYou leave the vault. Tally keeps the ledger.")
+    finally:
+        game.rotation.stop()
+        server.server_close()
 
 
 if __name__ == "__main__":

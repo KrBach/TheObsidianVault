@@ -46,6 +46,12 @@ tick_model = "haiku"
 # writes nothing); Tally hears the result in the next conversation and it goes on the notice board.
 # At most one at a time, and at most this many a day. 0 turns it off.
 thoughts_per_day = 3
+# Conversation rotation: a conversation closes (Tally gets one last turn to log and write a
+# handoff for the next one) on Quit, leaving by the front door, a new day (04:00), after this
+# many minutes without input from you (also in Esc → Settings; 0: never), and before your next
+# message once its context is past this many tokens (0: no limit). The game keeps running.
+idle_minutes = 30
+context_limit_tokens = 100000
 
 [brain]
 # "claude-code" (default): runs `claude -p` with your Claude Code login. No API key, no packages.
