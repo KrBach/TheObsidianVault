@@ -31,7 +31,6 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
-import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -43,6 +42,7 @@ try:
 except ImportError:  # pragma: no cover
     ZoneInfo = None
 
+from . import atomic
 from .config import Config
 
 SOUL = "soul.md"
@@ -370,10 +370,7 @@ class Ledger:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
             backup = self.backup_dir / f"{stamp}-{op['file'].replace('/', '__')}"
             backup.write_text(before, encoding="utf-8")
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_name(f".{p.name}.vault-tmp")
-        tmp.write_text(after, encoding="utf-8")
-        os.replace(tmp, p)
+        atomic.write_text(p, after)
         self._log({"event": "written", "file": op["file"], "kind": op["kind"], "summary": op.get("summary"),
                    "backup": str(backup) if backup else None})
 

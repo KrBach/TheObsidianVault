@@ -19,11 +19,11 @@ by the game to <state_dir>/tally.json, so the next time the game opens Tally is 
 from __future__ import annotations
 
 import json
-import os
 import re
 import time
 from pathlib import Path
 
+from . import atomic
 from .check_map import check
 from .config import REPO_ROOT
 
@@ -44,10 +44,7 @@ class WorldError(Exception):
 
 
 def _write_json(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
+    atomic.write_text(path, json.dumps(data, ensure_ascii=False, indent=1))
 
 
 def _read_json(path: Path, default):

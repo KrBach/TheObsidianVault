@@ -15,12 +15,13 @@ import getpass
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import sys
 import threading
 import time
 from pathlib import Path
+
+from . import atomic
 
 ROLES = ("owner", "guest")
 ITERATIONS = 310_000
@@ -51,11 +52,7 @@ def verify_password(pw: str, stored: str) -> bool:
 
 
 def _write(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
+    atomic.write_text(path, json.dumps(data), mode=0o600)
 
 
 class Auth:
